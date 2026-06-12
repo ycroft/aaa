@@ -1,10 +1,13 @@
+mod common;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
 #[tokio::test]
 async fn health_returns_ok() {
-    let app = aaa_hub::build_router();
+    let h = common::make().await;
+    let app = aaa_hub::build_router_with(h.state.clone());
     let res = app
         .oneshot(Request::builder().uri("/healthz").body(Body::empty()).unwrap())
         .await
