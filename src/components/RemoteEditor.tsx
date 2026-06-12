@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type { ProviderInfo, RemoteHostInfo, RemoteHostInput } from "../types";
+import { useT } from "../i18n";
 
 interface Props {
   initial: RemoteHostInfo | null;
@@ -20,6 +21,7 @@ const EMPTY: RemoteHostInput = {
 };
 
 export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
+  const t = useT();
   const [draft, setDraft] = useState<RemoteHostInput>(() =>
     initial
       ? {
@@ -79,20 +81,20 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
   return (
     <div className="modal-body">
       <div className="field">
-        <label>Label</label>
+        <label>{t("remote_editor.label")}</label>
         <input
           value={draft.label}
           onChange={(e) => patch({ label: e.target.value })}
-          placeholder="work-server"
+          placeholder={t("remote_editor.label_placeholder")}
         />
       </div>
       <div className="field">
-        <label>Host / Port</label>
+        <label>{t("remote_editor.host_port")}</label>
         <div className="row">
           <input
             value={draft.host}
             onChange={(e) => patch({ host: e.target.value })}
-            placeholder="10.0.0.5"
+            placeholder={t("remote_editor.host_placeholder")}
           />
           <input
             type="number"
@@ -103,26 +105,26 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
         </div>
       </div>
       <div className="field">
-        <label>User</label>
+        <label>{t("remote_editor.user")}</label>
         <input
           value={draft.user}
           onChange={(e) => patch({ user: e.target.value })}
-          placeholder="root"
+          placeholder={t("remote_editor.user_placeholder")}
         />
       </div>
       <div className="field">
-        <label>Auth</label>
+        <label>{t("remote_editor.auth")}</label>
         <select value={authKind} onChange={(e) => ensureAuth(e.target.value as any)}>
-          <option value="password">Password</option>
-          <option value="private_key">Private key</option>
+          <option value="password">{t("remote_editor.auth_password")}</option>
+          <option value="private_key">{t("remote_editor.auth_private_key")}</option>
         </select>
       </div>
       {authKind === "password" && (
         <div className="field">
-          <label>Password</label>
+          <label>{t("remote_editor.password")}</label>
           <input
             type="password"
-            placeholder={initial && !authTouched ? "(unchanged)" : ""}
+            placeholder={initial && !authTouched ? t("remote_editor.password_unchanged") : ""}
             value={draft.auth?.kind === "password" ? draft.auth.password : ""}
             onChange={(e) => {
               setAuthTouched(true);
@@ -134,7 +136,7 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
       {authKind === "private_key" && (
         <>
           <div className="field">
-            <label>Key file</label>
+            <label>{t("remote_editor.key_file")}</label>
             <div className="row">
               <input
                 value={draft.auth?.kind === "private_key" ? draft.auth.path : ""}
@@ -149,16 +151,16 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
                     },
                   });
                 }}
-                placeholder={initial && !authTouched ? "(unchanged)" : "/path/to/id_ed25519"}
+                placeholder={initial && !authTouched ? t("remote_editor.password_unchanged") : t("remote_editor.key_path_placeholder")}
               />
-              <button className="btn" onClick={pickKeyFile}>Browse…</button>
+              <button className="btn" onClick={pickKeyFile}>{t("remote_editor.browse")}</button>
             </div>
           </div>
           <div className="field">
-            <label>Passphrase</label>
+            <label>{t("remote_editor.passphrase")}</label>
             <input
               type="password"
-              placeholder="(optional)"
+              placeholder={t("remote_editor.passphrase_optional")}
               value={
                 draft.auth?.kind === "private_key" ? draft.auth.passphrase ?? "" : ""
               }
@@ -185,7 +187,7 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
             className="btn"
             onClick={() => setShowOverrides((v) => !v)}
           >
-            {showOverrides ? "▾" : "▸"} Provider root overrides
+            {showOverrides ? t("remote_editor.overrides_expanded") : t("remote_editor.overrides_collapsed")}
           </button>
         </label>
       </div>
@@ -195,13 +197,13 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
           <input
             value={draft.provider_root_overrides[p.id] ?? ""}
             onChange={(e) => setOverride(p.id, e.target.value)}
-            placeholder="(auto-detect)"
+            placeholder={t("remote_editor.overrides_auto")}
           />
         </div>
       ))}
 
       <div className="modal-foot">
-        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn" onClick={onCancel}>{t("remote_editor.cancel")}</button>
         <button
           className="btn primary"
           disabled={busy || !draft.host || !draft.user || !draft.label}
@@ -213,7 +215,7 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
               setBusy(false);
             }
           }}
-        >Save</button>
+        >{t("remote_editor.save")}</button>
       </div>
     </div>
   );

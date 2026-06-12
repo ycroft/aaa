@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { LocalTicket, RemoteTicketView } from '../types';
+import { useT } from "../i18n";
 
 interface Row {
   local: LocalTicket;
@@ -9,6 +10,7 @@ interface Row {
 }
 
 export function FeedbackList() {
+  const t = useT();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,17 +48,17 @@ export function FeedbackList() {
     };
   }, []);
 
-  if (loading) return <div>加载中…</div>;
-  if (rows.length === 0) return <div>还没有提交过反馈。</div>;
+  if (loading) return <div>{t("feedback_list.loading")}</div>;
+  if (rows.length === 0) return <div>{t("feedback_list.empty")}</div>;
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr>
-          <th style={{ textAlign: 'left' }}>时间</th>
-          <th style={{ textAlign: 'left' }}>分类</th>
-          <th style={{ textAlign: 'left' }}>标题</th>
-          <th style={{ textAlign: 'left' }}>状态</th>
-          <th style={{ textAlign: 'left' }}>备注</th>
+          <th style={{ textAlign: 'left' }}>{t("feedback_list.col_time")}</th>
+          <th style={{ textAlign: 'left' }}>{t("feedback_list.col_category")}</th>
+          <th style={{ textAlign: 'left' }}>{t("feedback_list.col_title")}</th>
+          <th style={{ textAlign: 'left' }}>{t("feedback_list.col_status")}</th>
+          <th style={{ textAlign: 'left' }}>{t("feedback_list.col_note")}</th>
         </tr>
       </thead>
       <tbody>
@@ -66,7 +68,7 @@ export function FeedbackList() {
             <td>{r.local.category}</td>
             <td>{r.local.title}</td>
             <td style={{ color: r.remote ? '#0a7' : '#999' }}>
-              {r.remote?.status ?? '未知'}
+              {r.remote?.status ?? t("feedback_list.status_unknown")}
             </td>
             <td>{r.remote?.admin_note ?? ''}</td>
           </tr>

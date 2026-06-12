@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { useT } from "../i18n";
 
 type State = 'idle' | 'available' | 'downloading' | 'failed';
 
 export function UpdateBanner() {
+  const t = useT();
   const [state, setState] = useState<State>('idle');
   const [version, setVersion] = useState<string>('');
   const [pending, setPending] = useState<Update | null>(null);
@@ -58,15 +60,15 @@ export function UpdateBanner() {
       alignItems: 'center',
       fontSize: 13,
     }}>
-      <span>新版本 v{version} 可用</span>
+      <span>{t("update_banner.available", { version })}</span>
       {state === 'available' && (
         <>
-          <button onClick={install}>立即安装</button>
-          <button onClick={() => setState('idle')}>稍后</button>
+          <button onClick={install}>{t("update_banner.install_now")}</button>
+          <button onClick={() => setState('idle')}>{t("update_banner.later")}</button>
         </>
       )}
-      {state === 'downloading' && <span>下载中 {progress}%</span>}
-      {state === 'failed' && <span>下载失败</span>}
+      {state === 'downloading' && <span>{t("update_banner.downloading", { percent: progress })}</span>}
+      {state === 'failed' && <span>{t("update_banner.failed")}</span>}
     </div>
   );
 }

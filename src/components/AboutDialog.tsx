@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { AppInfo } from "../types";
+import { useT } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function AboutDialog({ open, onClose }: Props) {
+  const t = useT();
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,32 +26,32 @@ export function AboutDialog({ open, onClose }: Props) {
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" data-hint="About" style={{ maxWidth: 560, width: "100%" }}>
+      <div className="modal" data-hint={t("about.title")} style={{ maxWidth: 560, width: "100%" }}>
         <div className="modal-head">
-          <div className="title">关于 AAA</div>
-          <button className="close" onClick={onClose} data-hint="Close (Esc)">×</button>
+          <div className="title">{t("about.title")}</div>
+          <button className="close" onClick={onClose} data-hint={t("about.close_hint")}>×</button>
         </div>
         <div className="modal-body" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
           {error && (
-            <div style={{ color: "var(--danger, #c0392b)" }}>加载失败：{error}</div>
+            <div style={{ color: "var(--danger, #c0392b)" }}>{t("about.load_failed", { error })}</div>
           )}
           {info && (
             <>
               <div style={{ marginBottom: 12, flex: "0 0 auto" }}>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{info.name}</div>
                 <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
-                  版本 v{info.version} · 作者 {info.author}
+                  {t("about.version_author", { version: info.version, author: info.author })}
                 </div>
               </div>
 
               <div style={{ marginBottom: 12, flex: "0 0 auto" }}>
-                <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 4 }}>简介</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 4 }}>{t("about.description")}</div>
                 <div style={{ fontSize: 13, lineHeight: 1.6 }}>{info.description}</div>
               </div>
 
               <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column" }}>
                 <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 4, flex: "0 0 auto" }}>
-                  当前版本 release notes
+                  {t("about.release_notes")}
                 </div>
                 <pre
                   style={{
@@ -73,7 +75,7 @@ export function AboutDialog({ open, onClose }: Props) {
           )}
         </div>
         <div className="modal-foot">
-          <button className="btn primary" onClick={onClose}>关闭</button>
+          <button className="btn primary" onClick={onClose}>{t("about.close")}</button>
         </div>
       </div>
     </div>

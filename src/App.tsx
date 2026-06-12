@@ -27,6 +27,7 @@ import { StatusBar } from "./components/StatusBar";
 
 import { useStatusHint } from "./hooks/useStatusHint";
 import { shortPath, sanitizeFileName, exportTimestamp } from "./format";
+import { I18nProvider, useI18n, type LanguagePref } from "./i18n";
 
 interface ActiveBackend {
   provider: ProviderInfo;
@@ -45,11 +46,41 @@ const DEFAULT_SETTINGS: AppSettings = {
   provider_roots: {},
   remotes: [],
   ai: { mode: "none", selected_agent: null, agents: [], prompt_templates: [] },
-  ui: { theme: "light", preview_chars: 220, auto_expand_threshold_tokens: 0 },
+  ui: { theme: "light", preview_chars: 220, auto_expand_threshold_tokens: 0, language: "auto" },
   hub: { base_url: "", device_id: "" },
 };
 
 export function App() {
+  const [bootstrapped, setBootstrapped] = useState(false);
+  const [language, setLanguage] = useState<LanguagePref>("auto");
+
+  // Read language preference once before mounting the i18n provider so the
+  // first paint is in the correct language and we don't flash zh→en (or v.v).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const s = await api.getSettings();
+        const pref = s.ui.language;
+        setLanguage(pref === "zh" || pref === "en" ? pref : "auto");
+      } catch {
+        /* fall back to auto */
+      } finally {
+        setBootstrapped(true);
+      }
+    })();
+  }, []);
+
+  if (!bootstrapped) return null;
+
+  return (
+    <I18nProvider pref={language} onPrefChange={setLanguage}>
+      <AppInner />
+    </I18nProvider>
+  );
+}
+
+function AppInner() {
+  const { t, setPref: setLangPref } = useI18n();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [remotes, setRemotes] = useState<RemoteHostInfo[]>([]);
@@ -72,7 +103,7 @@ export function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("Ready.");
+  const [status, setStatus] = useState(() => t("status.ready"));
   const [error, setError] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -115,20 +146,20 @@ export function App() {
   const refreshSessions = useCallback(async () => {
     if (!active) return;
     setBusy(true);
-    setStatus(`Scanning ${active.root}…`);
+    setStatus(t("status.scanning", { root: active.root }));
     try {
       const list = await api.listSessions(active.provider.id, active.root);
       setSessions(list);
-      setStatus(`Loaded ${list.length} session(s).`);
+      setStatus(t("status.loaded_sessions", { count: list.length }));
       setError(null);
     } catch (e: any) {
       setError(String(e));
       setSessions([]);
-      setStatus("Failed to scan directory.");
+      setStatus(t("status.scan_failed"));
     } finally {
       setBusy(false);
     }
-  }, [active]);
+  }, [active, t]);
 
   useEffect(() => { void refreshSessions(); }, [refreshSessions]);
 
@@ -156,7 +187,7 @@ export function App() {
     async (p: ProviderInfo, customRoot?: string) => {
       const root = customRoot || settings.provider_roots[p.id] || p.default_root || "";
       if (!root) {
-        setError("No directory configured for this backend.");
+        setError(t("alert.no_directory_configured"));
         return;
       }
       setActive({ provider: p, root, remote: null });
@@ -164,7 +195,7 @@ export function App() {
       setActivePath(null);
       setSplashOpen(false);
     },
-    [settings],
+    [settings, t],
   );
 
   const pickBackendCustom = useCallback(async (p: ProviderInfo) => {
@@ -183,10 +214,10 @@ export function App() {
           ? crypto.randomUUID()
           : `task-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setError(null);
-      setStatus(`Connecting to ${remote.label}…`);
+      setStatus(t("status.connecting_to", { label: remote.label }));
       setPendingRemote({ taskId, remote, provider, startKey: taskId });
     },
-    [providers],
+    [providers, t],
   );
 
   // Open a previously-synced cache directly. Skips SSH so it works fully
@@ -201,9 +232,9 @@ export function App() {
       setActivePath(null);
       setSplashOpen(false);
       setError(null);
-      setStatus(`Opened cached ${provider.display_name} from ${remote.label} (offline).`);
+      setStatus(t("status.opened_cache", { provider: provider.display_name, label: remote.label }));
     },
-    [providers],
+    [providers, t],
   );
 
   const onRemoteOpenSuccess = useCallback(
@@ -219,34 +250,37 @@ export function App() {
       setActivePath(null);
       setSplashOpen(false);
       setStatus(
-        `Synced from ${pending.remote.label}: ${result.sync_stats.files_pulled} pulled, ` +
-        `${result.sync_stats.files_skipped} skipped, ` +
-        `${result.sync_stats.files_deleted_locally} deleted`,
+        t("status.synced_from", {
+          label: pending.remote.label,
+          pulled: result.sync_stats.files_pulled,
+          skipped: result.sync_stats.files_skipped,
+          deleted: result.sync_stats.files_deleted_locally,
+        }),
       );
       setPendingRemote(null);
       void refreshRemotes();
     },
-    [pendingRemote, refreshRemotes],
+    [pendingRemote, refreshRemotes, t],
   );
 
   const onRemoteOpenCancelled = useCallback(() => {
     setPendingRemote(null);
-    setStatus("Connect cancelled.");
-  }, []);
+    setStatus(t("status.connect_cancelled"));
+  }, [t]);
 
   const onRemoteOpenError = useCallback((msg: string) => {
     if (msg.startsWith("HOST_KEY_MISMATCH:")) {
       window.alert(
-        `Host key for ${pendingRemote?.remote.label ?? "this host"} has changed.\n\n` +
-        "If you're sure this is the same machine, delete this remote in Settings " +
-        "and add it again to re-trust the new key.",
+        t("alert.host_key_changed", {
+          label: pendingRemote?.remote.label ?? t("alert.this_host"),
+        }),
       );
     } else {
       setError(msg);
     }
-    setStatus("Failed to connect.");
+    setStatus(t("status.connect_failed"));
     setPendingRemote(null);
-  }, [pendingRemote]);
+  }, [pendingRemote, t]);
 
   const onAddRemote = useCallback(() => {
     setSettingsOpen(true);
@@ -261,14 +295,14 @@ export function App() {
     try {
       const d = await api.loadSession(active.provider.id, s.source_path);
       setActiveSession(d);
-      setStatus(`Loaded: ${d.summary.title || d.summary.session_id}`);
+      setStatus(t("status.loaded_session", { title: d.summary.title || d.summary.session_id }));
     } catch (e: any) {
       setError(String(e));
-      setStatus("Failed to load session.");
+      setStatus(t("status.load_session_failed"));
     } finally {
       setLoadingSession(false);
     }
-  }, [active]);
+  }, [active, t]);
 
   const handleExport = useCallback(async () => {
     if (!active || !activeSession) return;
@@ -278,7 +312,7 @@ export function App() {
 
     const targetDir = await openDialog({ directory: true, multiple: false });
     if (typeof targetDir !== "string") {
-      setStatus("Export cancelled.");
+      setStatus(t("status.export_cancelled"));
       return;
     }
 
@@ -291,18 +325,22 @@ export function App() {
         targetDir,
         fileName,
       );
-      setStatus(`Exported to ${shortPath(exportedPath, 60)}`);
+      setStatus(t("status.exported_to", { path: shortPath(exportedPath, 60) }));
     } catch (e: any) {
       setError(String(e));
-      setStatus("Export failed.");
+      setStatus(t("status.export_failed"));
     } finally {
       setExporting(false);
     }
-  }, [active, activeSession]);
+  }, [active, activeSession, t]);
 
   const onSaveSettings = useCallback(async (next: AppSettings) => {
     await api.saveSettings(next);
     setSettings(next);
+    // Push the (possibly changed) language pref up to I18nProvider so the
+    // catalog and document.lang switch over right away.
+    const pref = next.ui.language;
+    setLangPref(pref === "zh" || pref === "en" ? pref : "auto");
     // Re-fetch providers in case path overrides changed.
     const ps = await api.listProviders();
     setProviders(ps);
@@ -323,8 +361,8 @@ export function App() {
         setActive({ ...active, root: newRoot });
       }
     }
-    setStatus("Settings saved.");
-  }, [active, refreshRemotes]);
+    setStatus(t("status.settings_saved"));
+  }, [active, refreshRemotes, setLangPref, t]);
 
   // ---- Keyboard shortcuts. ----
   useEffect(() => {
@@ -384,7 +422,7 @@ export function App() {
   // ---- Menus. ----
   const aiReady = settings.ai.mode === "agent" && !!settings.ai.selected_agent;
   const aiNotReadyMsg = !aiReady
-    ? settings.ai.mode === "api" ? "api模式暂不支持，请切换为 Agent 模式。" : "请先在设置（AI辅助分析）中配置并选择一个 Agent 工具。"
+    ? settings.ai.mode === "api" ? t("ai_dialog.not_ready_api") : t("ai_dialog.not_ready_no_agent")
     : null;
 
   const handleAiAnalysis = useCallback(() => {
@@ -395,80 +433,84 @@ export function App() {
   const menus: MenuDef[] = useMemo(
     () => [
       {
-        label: "File",
+        label: t("menu.file"),
         items: [
           {
-            label: "Switch backend…",
+            label: t("menu.switch_backend"),
             shortcut: "Ctrl+Shift+P",
-            hint: "Pick a different agent backend",
+            hint: t("menu.switch_backend_hint"),
             onClick: () => setSplashOpen(true),
           },
           {
-            label: "Refresh sessions",
+            label: t("menu.refresh_sessions"),
             shortcut: "F5",
-            hint: "Re-scan the active directory",
+            hint: t("menu.refresh_sessions_hint"),
             onClick: () => void refreshSessions(),
             disabled: !active,
           },
           {
-            label: "Export current session…",
+            label: t("menu.export_session"),
             shortcut: "Ctrl+Shift+E",
-            hint: "Save the loaded session as JSON",
+            hint: t("menu.export_session_hint"),
             onClick: () => void handleExport(),
             disabled: !activeSession || exporting,
           },
           {
-            label: "AI分析…",
-            hint: "启动AI辅助分析",
+            label: t("menu.ai_analysis"),
+            hint: t("menu.ai_analysis_hint"),
             onClick: handleAiAnalysis,
           },
           { separator: true, label: "" },
           {
-            label: "Settings…",
+            label: t("menu.settings"),
             shortcut: "Ctrl+,",
-            hint: "Open application settings",
+            hint: t("menu.settings_hint"),
             onClick: () => setSettingsOpen(true),
           },
           { separator: true, label: "" },
           {
-            label: "Quit",
-            hint: "Close AAA",
+            label: t("menu.quit"),
+            hint: t("menu.quit_hint"),
             onClick: () => window.close(),
           },
         ],
       },
       {
-        label: "View",
+        label: t("menu.view"),
         items: [
           {
-            label: expandAll ? "Collapse all" : "Expand all",
+            label: expandAll ? t("menu.collapse_all") : t("menu.expand_all"),
             shortcut: "Ctrl+E",
-            hint: "Toggle expand-all for the timeline",
+            hint: t("menu.expand_all_hint"),
             onClick: () => setExpandAll((v) => !v),
           },
           {
-            label: "Filter sessions…",
+            label: t("menu.filter_sessions"),
             shortcut: "Ctrl+Alt+F",
-            hint: "Focus the sessions filter box",
+            hint: t("menu.filter_sessions_hint"),
             onClick: () => {
               const el = document.querySelector<HTMLInputElement>("input.search");
               el?.focus(); el?.select();
             },
           },
           { separator: true, label: "" },
-          ...(["light", "dark", "win98"] as const).map((t) => ({
+          ...(["light", "dark", "win98"] as const).map((theme) => ({
             label:
-              (settings.ui.theme === t ? "● " : "   ") +
-              (t === "light" ? "Light theme" : t === "dark" ? "Dark theme" : "Windows 98 (retro)"),
+              (settings.ui.theme === theme ? "● " : "   ") +
+              (theme === "light"
+                ? t("menu.light_theme")
+                : theme === "dark"
+                ? t("menu.dark_theme")
+                : t("menu.win98_theme")),
             hint:
-              t === "light"
-                ? "Switch to light theme"
-                : t === "dark"
-                ? "Switch to dark theme"
-                : "Switch to Windows 98 retro theme",
+              theme === "light"
+                ? t("menu.light_theme_hint")
+                : theme === "dark"
+                ? t("menu.dark_theme_hint")
+                : t("menu.win98_theme_hint"),
             onClick: () => {
-              if (settings.ui.theme === t) return;
-              const updated: AppSettings = { ...settings, ui: { ...settings.ui, theme: t } };
+              if (settings.ui.theme === theme) return;
+              const updated: AppSettings = { ...settings, ui: { ...settings.ui, theme } };
               setSettings(updated);
               void api.saveSettings(updated);
             },
@@ -476,21 +518,21 @@ export function App() {
         ],
       },
       {
-        label: "Help",
+        label: t("menu.help"),
         items: [
           {
-            label: "About AAA",
-            hint: "About this tool",
+            label: t("menu.about"),
+            hint: t("menu.about_hint"),
             onClick: () => setAboutOpen(true),
           },
         ],
       },
     ],
-    [active, expandAll, refreshSessions, settings, activeSession, exporting, handleExport, handleAiAnalysis],
+    [active, expandAll, refreshSessions, settings, activeSession, exporting, handleExport, handleAiAnalysis, t],
   );
 
-  const providerLabel = active ? active.provider.display_name : "—";
-  const rootLabel = active ? shortPath(active.root, 60) : "(no backend)";
+  const providerLabel = active ? active.provider.display_name : t("format.em_dash");
+  const rootLabel = active ? shortPath(active.root, 60) : "—";
 
   return (
     <div className="app">
@@ -512,7 +554,6 @@ export function App() {
         canExport={!!activeSession && !exporting}
         onAiAnalysis={handleAiAnalysis}
         canAiAnalysis={true}
-        aiAnalysisHint="启动AI辅助分析"
         onFeedback={() => setFeedbackOpen(true)}
         hubConnected={hubConnected}
       />
@@ -575,7 +616,7 @@ export function App() {
       <FeedbackDialog
         open={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}
-        onSubmitted={(id) => setStatus(`反馈已提交：#${id.slice(0, 6)}`)}
+        onSubmitted={(id) => setStatus(t("status.feedback_submitted", { id: id.slice(0, 6) }))}
       />
       <RemoteProgressDialog
         open={pendingRemote !== null}

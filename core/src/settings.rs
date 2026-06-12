@@ -127,6 +127,8 @@ pub struct UiSettings {
     pub theme: String,
     pub preview_chars: u32,
     pub auto_expand_threshold_tokens: u64,
+    /// "auto" follows navigator.language; "zh" / "en" are explicit overrides.
+    pub language: String,
 }
 
 impl Default for UiSettings {
@@ -135,6 +137,7 @@ impl Default for UiSettings {
             theme: "light".into(),
             preview_chars: 220,
             auto_expand_threshold_tokens: 0,
+            language: "auto".into(),
         }
     }
 }

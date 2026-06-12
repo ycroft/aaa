@@ -3,6 +3,7 @@ import { tempDir } from "@tauri-apps/api/path";
 import type { AppSettings, ProviderInfo, SessionDetail, TemplateScope } from "../types";
 import { api } from "../api";
 import { sanitizeFileName } from "../format";
+import { useT } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function AiAnalysisDialog({ open, settings, activeSession, active, onClose }: Props) {
+  const t = useT();
   const [scope, setScope] = useState<TemplateScope>("single");
   const [templateId, setTemplateId] = useState<string>("blank");
   const [promptText, setPromptText] = useState("");
@@ -62,7 +64,7 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
       }
 
       const fileList = exportedPaths.map((p) => `- ${p}`).join("\n");
-      const fullPrompt = [promptText, appendText, `\n导出的会话文件：\n${fileList}`]
+      const fullPrompt = [promptText, appendText, `\n${t("ai_dialog.exported_files_label")}\n${fileList}`]
         .filter(Boolean)
         .join("\n\n");
 
@@ -77,14 +79,14 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" data-hint="AI分析" style={{ maxWidth: 520, width: "100%" }}>
+      <div className="modal" data-hint={t("ai_dialog.hint")} style={{ maxWidth: 520, width: "100%" }}>
         <div className="modal-head">
-          <div className="title">AI 辅助分析</div>
-          <button className="close" onClick={onClose} data-hint="Close (Esc)">×</button>
+          <div className="title">{t("ai_dialog.title")}</div>
+          <button className="close" onClick={onClose} data-hint={t("ai_dialog.close_hint")}>×</button>
         </div>
         <div className="modal-body">
           <div className="field">
-            <label>分析范围</label>
+            <label>{t("ai_dialog.scope")}</label>
             <div style={{ display: "flex", gap: 16 }}>
               <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: activeSession ? "pointer" : "not-allowed", opacity: activeSession ? 1 : 0.45 }}>
                 <input
@@ -95,7 +97,7 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
                   disabled={!activeSession}
                   onChange={() => { setScope("single"); setTemplateId("blank"); setPromptText(""); }}
                 />
-                当前会话
+                {t("ai_dialog.scope_single")}
               </label>
               <label style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
                 <input
@@ -105,33 +107,33 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
                   checked={scope === "all"}
                   onChange={() => { setScope("all"); setTemplateId("blank"); setPromptText(""); }}
                 />
-                所有会话
+                {t("ai_dialog.scope_all")}
               </label>
             </div>
             {!activeSession && scope === "single" && (
-              <div className="help">请先在左侧选择一个会话。</div>
+              <div className="help">{t("ai_dialog.pick_session_first")}</div>
             )}
           </div>
 
           <div className="field">
-            <label>提示词模板</label>
+            <label>{t("ai_dialog.template")}</label>
             <select
               value={templateId}
               onChange={(e) => setTemplateId(e.target.value)}
             >
-              <option value="blank">空白模板（完全自定义）</option>
-              {filteredTemplates.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+              <option value="blank">{t("ai_dialog.template_blank")}</option>
+              {filteredTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
               ))}
             </select>
           </div>
 
           <div className="field">
-            <label>提示词</label>
+            <label>{t("ai_dialog.prompt")}</label>
             <textarea
               value={promptText}
               onChange={(e) => setPromptText(e.target.value)}
-              placeholder="输入提示词，或从上方选择模板…"
+              placeholder={t("ai_dialog.prompt_placeholder")}
               rows={6}
               style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
               spellCheck={false}
@@ -139,11 +141,11 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
           </div>
 
           <div className="field">
-            <label>附加说明（追加在提示词后）</label>
+            <label>{t("ai_dialog.append")}</label>
             <textarea
               value={appendText}
               onChange={(e) => setAppendText(e.target.value)}
-              placeholder="可选，追加在提示词末尾的补充说明…"
+              placeholder={t("ai_dialog.append_placeholder")}
               rows={2}
               style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
               spellCheck={false}
@@ -160,18 +162,18 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
 
           {!selectedAgent && (
             <div className="help" style={{ color: "var(--warn, #a60)" }}>
-              请先在设置中选择一个 Agent 工具。
+              {t("ai_dialog.pick_agent_first")}
             </div>
           )}
         </div>
         <div className="modal-foot">
-          <button className="btn" onClick={onClose} disabled={exporting}>取消</button>
+          <button className="btn" onClick={onClose} disabled={exporting}>{t("ai_dialog.cancel")}</button>
           <button
             className="btn primary"
             disabled={exporting || !selectedAgent || !active || (scope === "single" && !activeSession)}
             onClick={handleStart}
           >
-            {exporting ? "导出中…" : "开始分析"}
+            {exporting ? t("ai_dialog.exporting") : t("ai_dialog.start")}
           </button>
         </div>
       </div>

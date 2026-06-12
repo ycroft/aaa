@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { SessionFilter, SessionSummary } from "../types";
 import { formatRelativeTime, formatTokens, shortPath } from "../format";
+import { useT } from "../i18n";
 
 interface Props {
   sessions: SessionSummary[];
@@ -37,6 +38,7 @@ function resolveTimeWindow(filter: SessionFilter): { from: number | null; to: nu
 }
 
 export function SessionList({ sessions, filter, activeId, onPick }: Props) {
+  const t = useT();
   const filtered = useMemo(() => {
     const f = filter.search.trim().toLowerCase();
     const cwd = filter.cwd;
@@ -69,13 +71,13 @@ export function SessionList({ sessions, filter, activeId, onPick }: Props) {
   return (
     <div className="sidebar">
       <div className="sb-head">
-        <span>Sessions</span>
+        <span>{t("session_list.heading")}</span>
         <span className="count">{filtered.length}/{sessions.length}</span>
       </div>
       <div className="sb-list">
         {filtered.length === 0 && (
           <div style={{ padding: 18, color: "var(--text-3)", fontSize: 12 }}>
-            No sessions match this filter.
+            {t("session_list.empty")}
           </div>
         )}
         {filtered.map((s) => (
@@ -83,16 +85,16 @@ export function SessionList({ sessions, filter, activeId, onPick }: Props) {
             key={s.source_path}
             className={`session-row${activeId === s.source_path ? " active" : ""}`}
             onClick={() => onPick(s)}
-            data-hint={`Open session ${s.session_id}`}
+            data-hint={t("session_list.open_hint", { id: s.session_id })}
           >
             <div className="title">{s.title || s.session_id}</div>
             <div className="meta">
               <span title={s.cwd ?? ""}>{shortPath(s.cwd, 40)}</span>
               {s.git_branch && <span className="pill">{s.git_branch}</span>}
-              <span>{formatRelativeTime(s.ended_at ?? s.started_at)}</span>
-              <span className="pill">{s.message_count} msgs</span>
-              <span className="pill" title="Peak context window observed">
-                ctx {formatTokens(s.peak_context_tokens)}
+              <span>{formatRelativeTime(s.ended_at ?? s.started_at, t)}</span>
+              <span className="pill">{t("session_list.msgs_pill", { n: s.message_count })}</span>
+              <span className="pill" title={t("session_list.peak_ctx_hint")}>
+                {t("session_list.peak_ctx", { tokens: formatTokens(s.peak_context_tokens) })}
               </span>
             </div>
           </div>

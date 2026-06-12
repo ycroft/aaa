@@ -1,4 +1,5 @@
 import { formatTokens } from "../format";
+import { useT } from "../i18n";
 
 interface Props {
   hint: string;
@@ -23,31 +24,32 @@ export function StatusBar({
   status,
   busy,
 }: Props) {
+  const t = useT();
   return (
-    <div className="statusbar" data-hint="Status bar — hover any control for help">
+    <div className="statusbar" data-hint={t("status_bar.hint")}>
       <span className="item">
-        <span className="k">backend</span>
+        <span className="k">{t("status_bar.backend")}</span>
         <span className="v">{providerLabel}</span>
       </span>
       {remoteLabel && (
         <span className="item">
-          <span className="k">remote</span>
+          <span className="k">{t("status_bar.remote")}</span>
           <span className="v">↗ {remoteLabel}</span>
         </span>
       )}
       <span className="item">
-        <span className="k">sessions</span>
+        <span className="k">{t("status_bar.sessions")}</span>
         <span className="v">{sessionCount}</span>
       </span>
       <span className="item">
-        <span className="k">nodes</span>
+        <span className="k">{t("status_bar.nodes")}</span>
         <span className="v">{expandedNodes}/{totalNodes}</span>
       </span>
       <span className="item">
-        <span className="k">peak ctx</span>
+        <span className="k">{t("status_bar.peak_ctx")}</span>
         <span className="v">{formatTokens(peakCtx)}</span>
       </span>
-      {busy && <span className="item"><span className="v">●</span><span>working…</span></span>}
+      {busy && <span className="item"><span className="v">●</span><span>{t("status_bar.working")}</span></span>}
       <span className="spacer" />
       <span className="hint">{hint || status}</span>
     </div>

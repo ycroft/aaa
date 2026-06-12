@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 
 interface Item {
   label: string;
@@ -15,6 +16,7 @@ export interface MenuDef {
 }
 
 export function Menubar({ menus }: { menus: MenuDef[] }) {
+  const t = useT();
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -29,7 +31,7 @@ export function Menubar({ menus }: { menus: MenuDef[] }) {
 
   return (
     <div className="menubar" ref={ref}>
-      <div className="brand" data-hint="AAA · multi-backend AI agent session analyzer">
+      <div className="brand" data-hint={t("app.brand_hint")}>
         <span className="dot" />
         <span>AAA</span>
       </div>
@@ -41,7 +43,7 @@ export function Menubar({ menus }: { menus: MenuDef[] }) {
               setOpenIdx(openIdx === i ? null : i);
             }}
             onMouseEnter={() => openIdx != null && setOpenIdx(i)}
-            data-hint={`${m.label} menu`}
+            data-hint={`${m.label}`}
           >
             {m.label}
           </button>

@@ -12,6 +12,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { RemoteEditor } from "./RemoteEditor";
 import { FeedbackList } from "./FeedbackList";
+import { useT, type TKey } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -24,13 +25,13 @@ interface Props {
 
 type Tab = "backends" | "remotes" | "ai" | "display" | "hub" | "feedback";
 
-const TAB_LABELS: Record<Tab, string> = {
-  backends: "后端",
-  remotes: "远程主机",
-  ai: "AI辅助分析",
-  display: "显示",
-  hub: "Hub",
-  feedback: "我的反馈",
+const TAB_KEYS: Record<Tab, TKey> = {
+  backends: "settings.tab.backends",
+  remotes: "settings.tab.remotes",
+  ai: "settings.tab.ai",
+  display: "settings.tab.display",
+  hub: "settings.tab.hub",
+  feedback: "settings.tab.feedback",
 };
 
 function genId() {
@@ -45,6 +46,7 @@ export function SettingsDialog({
   onSave,
   onRemotesChanged,
 }: Props) {
+  const t = useT();
   const [tab, setTab] = useState<Tab>("backends");
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saving, setSaving] = useState(false);
@@ -100,7 +102,7 @@ export function SettingsDialog({
   }
 
   async function deleteRemote(id: string) {
-    if (!window.confirm("Delete this remote? Cached files will also be removed.")) return;
+    if (!window.confirm(t("settings.delete_remote_confirm"))) return;
     await api.deleteRemote(id);
     await refreshRemotes();
   }
@@ -121,10 +123,10 @@ export function SettingsDialog({
     setAi({ agents: [...draft.ai.agents, { id: genId(), name: "", cmd_template: "", is_preset: false }] });
 
   const updateTemplate = (id: string, patch: Partial<PromptTemplate>) =>
-    setAi({ prompt_templates: draft.ai.prompt_templates.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+    setAi({ prompt_templates: draft.ai.prompt_templates.map((tpl) => (tpl.id === id ? { ...tpl, ...patch } : tpl)) });
 
   const removeTemplate = (id: string) =>
-    setAi({ prompt_templates: draft.ai.prompt_templates.filter((t) => t.id !== id) });
+    setAi({ prompt_templates: draft.ai.prompt_templates.filter((tpl) => tpl.id !== id) });
 
   const addTemplate = () =>
     setAi({ prompt_templates: [...draft.ai.prompt_templates, { id: genId(), name: "", content: "", scope: "single" as TemplateScope }] });
@@ -133,24 +135,24 @@ export function SettingsDialog({
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" data-hint="Settings" style={{ maxWidth: 620, width: "100%" }}>
+      <div className="modal" data-hint={t("settings.title")} style={{ maxWidth: 620, width: "100%" }}>
         <div className="modal-head">
-          <div className="title">设置</div>
-          <button className="close" onClick={onClose} data-hint="Close (Esc)">×</button>
+          <div className="title">{t("settings.title")}</div>
+          <button className="close" onClick={onClose} data-hint={t("settings.close_hint")}>×</button>
         </div>
         <div style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border)" }}>
-          {(["backends", "remotes", "ai", "display", "hub", "feedback"] as Tab[]).map((t) => (
+          {(["backends", "remotes", "ai", "display", "hub", "feedback"] as Tab[]).map((tk) => (
             <button
-              key={t}
-              className={"btn" + (tab === t ? " primary" : "")}
-              onClick={() => { setTab(t); setEditing(null); }}
-            >{TAB_LABELS[t]}</button>
+              key={tk}
+              className={"btn" + (tab === tk ? " primary" : "")}
+              onClick={() => { setTab(tk); setEditing(null); }}
+            >{t(TAB_KEYS[tk])}</button>
           ))}
         </div>
 
         {tab === "backends" && (
           <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>后端</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.backends.heading")}</h3>
             {providers.map((p) => (
               <div className="field" key={p.id}>
                 <label>{p.display_name}</label>
@@ -158,17 +160,17 @@ export function SettingsDialog({
                   <input
                     value={draft.provider_roots[p.id] ?? p.default_root ?? ""}
                     onChange={(e) => setRoot(p.id, e.target.value)}
-                    placeholder={p.default_root ?? "(none)"}
+                    placeholder={p.default_root ?? t("splash.no_path")}
                     spellCheck={false}
                   />
-                  <button className="btn" onClick={() => pickRoot(p.id)} data-hint="Pick a directory">浏览…</button>
+                  <button className="btn" onClick={() => pickRoot(p.id)} data-hint={t("settings.backends.browse_hint")}>{t("settings.backends.browse")}</button>
                 </div>
                 <div className="help">
                   {p.is_implemented
                     ? p.root_exists
-                      ? "已找到默认目录。"
-                      : "未找到默认目录 — 请设置自定义路径。"
-                    : "此后端尚未实现。"}
+                      ? t("settings.backends.default_found")
+                      : t("settings.backends.default_not_found")
+                    : t("settings.backends.not_implemented")}
                 </div>
               </div>
             ))}
@@ -178,10 +180,10 @@ export function SettingsDialog({
         {tab === "remotes" && editing === null && (
           <div className="modal-body">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h3 style={{ margin: 0, fontSize: 13, color: "var(--text-2)" }}>远程主机</h3>
-              <button className="btn primary" onClick={() => setEditing("new")}>+ 添加</button>
+              <h3 style={{ margin: 0, fontSize: 13, color: "var(--text-2)" }}>{t("settings.remotes.heading")}</h3>
+              <button className="btn primary" onClick={() => setEditing("new")}>{t("settings.remotes.add")}</button>
             </div>
-            {remotes.length === 0 && <div className="help">暂无远程主机。</div>}
+            {remotes.length === 0 && <div className="help">{t("settings.remotes.empty")}</div>}
             {remotes.map((r) => (
               <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--border-1)" }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -191,13 +193,13 @@ export function SettingsDialog({
                   </div>
                   {!r.host_key_known && (
                     <div className="help" style={{ gridColumn: "auto", color: "var(--warn)" }}>
-                      ⚠ 主机密钥尚未信任 — 首次成功连接时将自动固定（TOFU）
+                      {t("settings.remotes.tofu_warning")}
                     </div>
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button className="btn" onClick={() => setEditing(r)}>编辑</button>
-                  <button className="btn" onClick={() => deleteRemote(r.id)}>×</button>
+                  <button className="btn" onClick={() => setEditing(r)}>{t("settings.remotes.edit")}</button>
+                  <button className="btn" onClick={() => deleteRemote(r.id)}>{t("settings.remotes.delete")}</button>
                 </div>
               </div>
             ))}
@@ -215,20 +217,19 @@ export function SettingsDialog({
 
         {tab === "ai" && (
           <div className="modal-body">
-            {/* Section A: AI辅助模式 */}
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>AI辅助模式</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.ai.mode_heading")}</h3>
             <div className="field">
-              <label>模式</label>
+              <label>{t("settings.ai.mode")}</label>
               <select value={draft.ai.mode} onChange={(e) => setAi({ mode: e.target.value as AppSettings["ai"]["mode"] })}>
-                <option value="none">无（不启用AI辅助分析）</option>
-                <option value="agent">Agent 模式</option>
-                <option value="api" disabled>API 模式（待开放）</option>
+                <option value="none">{t("settings.ai.mode_none")}</option>
+                <option value="agent">{t("settings.ai.mode_agent")}</option>
+                <option value="api" disabled>{t("settings.ai.mode_api")}</option>
               </select>
             </div>
 
             {draft.ai.mode === "agent" && (
               <>
-                <div className="help" style={{ marginBottom: 8 }}>选择一个 Agent 工具（单选），配置其启动命令。{"{prompt_file}"} 为提示词文件占位符。</div>
+                <div className="help" style={{ marginBottom: 8 }}>{t("settings.ai.agent_help")}</div>
                 {draft.ai.agents.map((agent) => {
                   const isSelected = draft.ai.selected_agent === agent.id;
                   const missing = agent.is_preset && detected[agent.id] === false;
@@ -246,13 +247,13 @@ export function SettingsDialog({
                         {agent.is_preset ? (
                           <div style={{ fontWeight: 600, marginBottom: 4 }}>
                             {agent.name}
-                            {missing && <span className="help" style={{ marginLeft: 6, color: "var(--text-2)" }}>（未检测到命令）</span>}
+                            {missing && <span className="help" style={{ marginLeft: 6, color: "var(--text-2)" }}>{t("settings.ai.agent_missing")}</span>}
                           </div>
                         ) : (
                           <input
                             value={agent.name}
                             onChange={(e) => updateAgent(agent.id, { name: e.target.value })}
-                            placeholder="工具名称"
+                            placeholder={t("settings.ai.agent_name_placeholder")}
                             style={{ marginBottom: 4, width: "100%", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit" }}
                             spellCheck={false}
                           />
@@ -260,7 +261,7 @@ export function SettingsDialog({
                         <input
                           value={agent.cmd_template}
                           onChange={(e) => updateAgent(agent.id, { cmd_template: e.target.value })}
-                          placeholder="命令行模板，如: mytool {prompt_file}"
+                          placeholder={t("settings.ai.agent_cmd_placeholder")}
                           style={{ width: "100%", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontFamily: "monospace", fontSize: 12 }}
                           spellCheck={false}
                         />
@@ -271,20 +272,19 @@ export function SettingsDialog({
                     </div>
                   );
                 })}
-                <button className="btn" onClick={addAgent} style={{ marginTop: 8 }}>+ 添加自定义工具</button>
+                <button className="btn" onClick={addAgent} style={{ marginTop: 8 }}>{t("settings.ai.add_custom_agent")}</button>
               </>
             )}
 
-            {/* Section B: 提示词模板 */}
-            <h3 style={{ margin: "16px 0 10px", fontSize: 13, color: "var(--text-2)" }}>提示词模板</h3>
-            <div className="help" style={{ marginBottom: 8 }}>管理 AI 分析时使用的提示词模板。"单个会话"模板用于分析当前选中的会话，"所有会话"模板用于跨会话批量分析。</div>
+            <h3 style={{ margin: "16px 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.ai.template_heading")}</h3>
+            <div className="help" style={{ marginBottom: 8 }}>{t("settings.ai.template_help")}</div>
             {draft.ai.prompt_templates.map((tpl) => (
               <div key={tpl.id} style={{ marginBottom: 10, padding: "8px 0", borderBottom: "1px solid var(--border-1)" }}>
                 <div style={{ display: "flex", gap: 6, marginBottom: 4, alignItems: "center" }}>
                   <input
                     value={tpl.name}
                     onChange={(e) => updateTemplate(tpl.id, { name: e.target.value })}
-                    placeholder="模板名称"
+                    placeholder={t("settings.ai.template_name_placeholder")}
                     style={{ flex: 1, padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit" }}
                     spellCheck={false}
                   />
@@ -293,38 +293,38 @@ export function SettingsDialog({
                     onChange={(e) => updateTemplate(tpl.id, { scope: e.target.value as TemplateScope })}
                     style={{ padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit", cursor: "pointer", flexShrink: 0 }}
                   >
-                    <option value="single">单个会话</option>
-                    <option value="all">所有会话</option>
+                    <option value="single">{t("settings.ai.template_scope_single")}</option>
+                    <option value="all">{t("settings.ai.template_scope_all")}</option>
                   </select>
                   <button className="btn" onClick={() => removeTemplate(tpl.id)} style={{ flexShrink: 0, padding: "4px 8px" }}>×</button>
                 </div>
                 <textarea
                   value={tpl.content}
                   onChange={(e) => updateTemplate(tpl.id, { content: e.target.value })}
-                  placeholder="提示词内容…"
+                  placeholder={t("settings.ai.template_content_placeholder")}
                   rows={3}
                   style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 12, padding: "6px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", boxSizing: "border-box" }}
                   spellCheck={false}
                 />
               </div>
             ))}
-            <button className="btn" onClick={addTemplate}>+ 添加模板</button>
+            <button className="btn" onClick={addTemplate}>{t("settings.ai.add_template")}</button>
           </div>
         )}
 
         {tab === "display" && (
           <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>显示</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.display.heading")}</h3>
             <div className="field">
-              <label>主题</label>
+              <label>{t("settings.display.theme")}</label>
               <select value={draft.ui.theme} onChange={(e) => setUi({ theme: e.target.value })}>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="win98">Windows 98（复古）</option>
+                <option value="light">{t("settings.display.theme_light")}</option>
+                <option value="dark">{t("settings.display.theme_dark")}</option>
+                <option value="win98">{t("settings.display.theme_win98")}</option>
               </select>
             </div>
             <div className="field">
-              <label>预览字符数</label>
+              <label>{t("settings.display.preview_chars")}</label>
               <input
                 type="number"
                 min={60}
@@ -332,16 +332,28 @@ export function SettingsDialog({
                 value={draft.ui.preview_chars}
                 onChange={(e) => setUi({ preview_chars: Number(e.target.value) })}
               />
-              <div className="help">折叠节点中显示的文本长度。</div>
+              <div className="help">{t("settings.display.preview_chars_help")}</div>
+            </div>
+            <div className="field">
+              <label>{t("settings.display.language")}</label>
+              <select
+                value={draft.ui.language || "auto"}
+                onChange={(e) => setUi({ language: e.target.value })}
+              >
+                <option value="auto">{t("settings.display.language_auto")}</option>
+                <option value="zh">{t("settings.display.language_zh")}</option>
+                <option value="en">{t("settings.display.language_en")}</option>
+              </select>
+              <div className="help">{t("settings.display.language_help")}</div>
             </div>
           </div>
         )}
 
         {tab === "hub" && (
           <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>aaa-hub</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.hub.heading")}</h3>
             <div className="field">
-              <label>Base URL</label>
+              <label>{t("settings.hub.base_url")}</label>
               <input
                 type="url"
                 placeholder="https://aaa.example.intranet"
@@ -354,32 +366,32 @@ export function SettingsDialog({
                 }
               />
               <div className="help">
-                留空表示禁用 hub。配置后客户端会探测连通性，连不上时反馈按钮自动灰显。
+                {t("settings.hub.base_url_help")}
               </div>
             </div>
             <div className="field">
-              <label>设备 id（匿名 ULID）</label>
+              <label>{t("settings.hub.device_id")}</label>
               <input
                 type="text"
                 value={draft.hub?.device_id ?? ""}
                 readOnly
                 style={{ opacity: 0.7 }}
               />
-              <div className="help">首次启动时自动生成；服务端用它关联同一台机器的多次反馈。</div>
+              <div className="help">{t("settings.hub.device_id_help")}</div>
             </div>
           </div>
         )}
 
         {tab === "feedback" && (
           <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>我的反馈</h3>
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.feedback_tab.heading")}</h3>
             <FeedbackList />
           </div>
         )}
 
         {!inEditor && (
           <div className="modal-foot">
-            <button className="btn" onClick={onClose}>取消</button>
+            <button className="btn" onClick={onClose}>{t("settings.cancel")}</button>
             <button
               className="btn primary"
               disabled={saving}
@@ -392,7 +404,7 @@ export function SettingsDialog({
                   setSaving(false);
                 }
               }}
-            >保存</button>
+            >{t("settings.save")}</button>
           </div>
         )}
       </div>

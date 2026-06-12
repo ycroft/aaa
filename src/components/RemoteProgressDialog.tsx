@@ -8,6 +8,7 @@ import type {
   SyncProgress,
 } from "../types";
 import { formatBytes } from "../format";
+import { useT, type TKey } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -23,13 +24,13 @@ interface Props {
   providerId: string;
 }
 
-const PHASE_LABEL: Record<SyncPhase, string> = {
-  connecting: "Connecting to remote host…",
-  probing: "Looking up backend directory…",
-  listing: "Listing remote files…",
-  downloading: "Syncing files…",
-  cleaning: "Cleaning up local cache…",
-  done: "Done.",
+const PHASE_KEYS: Record<SyncPhase, TKey> = {
+  connecting: "remote_progress.phase.connecting",
+  probing: "remote_progress.phase.probing",
+  listing: "remote_progress.phase.listing",
+  downloading: "remote_progress.phase.downloading",
+  cleaning: "remote_progress.phase.cleaning",
+  done: "remote_progress.phase.done",
 };
 
 const INITIAL: SyncProgress = {
@@ -53,6 +54,7 @@ export function RemoteProgressDialog({
   remoteId,
   providerId,
 }: Props) {
+  const t = useT();
   const [progress, setProgress] = useState<SyncProgress>(INITIAL);
   const [cancelling, setCancelling] = useState(false);
 
@@ -130,14 +132,14 @@ export function RemoteProgressDialog({
   if (!open) return null;
 
   const indeterminate = pct == null;
-  const phaseLabel = PHASE_LABEL[progress.phase] ?? progress.phase;
+  const phaseLabel = t(PHASE_KEYS[progress.phase] ?? "remote_progress.phase.connecting");
 
   return (
-    <div className="overlay" data-hint="Remote sync in progress — please wait or cancel">
+    <div className="overlay" data-hint={t("remote_progress.overlay_hint")}>
       <div className="modal progress-modal" role="dialog" aria-modal="true">
         <div className="modal-head">
           <div className="title">
-            Connecting to {remoteLabel} · {providerLabel}
+            {t("remote_progress.title", { label: remoteLabel, provider: providerLabel })}
           </div>
         </div>
         <div className="modal-body">
@@ -150,7 +152,9 @@ export function RemoteProgressDialog({
           </div>
           <div className="progress-meta">
             <span>
-              {progress.files_done}/{progress.files_total || "?"} files
+              {progress.files_total > 0
+                ? t("remote_progress.files_count", { done: progress.files_done, total: progress.files_total })
+                : t("remote_progress.files_unknown_total", { done: progress.files_done })}
             </span>
             <span>·</span>
             <span>
@@ -166,13 +170,13 @@ export function RemoteProgressDialog({
           )}
           {cancelling && (
             <div className="help" style={{ marginTop: 10 }}>
-              Cancelling… waiting for the current step to abort.
+              {t("remote_progress.cancelling_help")}
             </div>
           )}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={doCancel} disabled={cancelling}>
-            {cancelling ? "Cancelling…" : "Cancel"}
+            {cancelling ? t("remote_progress.cancelling") : t("remote_progress.cancel")}
           </button>
         </div>
       </div>

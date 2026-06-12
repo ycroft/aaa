@@ -1,7 +1,7 @@
 {
   "name": "aaa",
   "private": true,
-  "version": "0.10.1",
+  "version": "0.11.0",
   "type": "module",
   "description": "AI Agent Analyzer — multi-backend session log analyzer for Claude Code, opencode, and others",
   "scripts": {

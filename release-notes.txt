@@ -1,3 +1,14 @@
+v0.11.0
+-------
+- 前端国际化（i18n）：默认中文 UI，支持切换到英文
+  - 自建轻量 catalog（src/i18n/{zh,en}.ts）+ I18nProvider + useT() hook，TS 字面量类型确保两边 key 同形
+  - 设置 → 显示 新增「界面语言」下拉：自动（跟随系统）/ 中文 / English；切换立即生效
+  - 首次启动按 navigator.language 探测：以 zh 开头则中文，否则英文
+  - AppSettings.ui 新增 language 字段（"auto" | "zh" | "en"），与 settings.json 一起持久化
+  - 覆盖范围：菜单栏 / 工具栏 / 状态栏 / 会话列表 / 会话查看器（指标面板、时间线、子代理切换、工具过滤、tooltip）/ 全部对话框（设置、关于、反馈、AI 分析、远程主机编辑、远程同步进度、provider splash、更新提示）
+  - format.ts 的相对时间桶（5 分钟前 / 5m ago）按当前语言渲染
+  - Rust 抛上来的错误消息保留原文（不本地化）；release notes 不双语，按作者写的中文显示
+
 v0.10.1
 -------
 - 文档：按当前代码重写 README.md

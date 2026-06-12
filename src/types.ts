@@ -137,6 +137,8 @@ export interface AppSettings {
     theme: string;
     preview_chars: number;
     auto_expand_threshold_tokens: number;
+    /** "auto" follows navigator.language; "zh" / "en" are explicit overrides. */
+    language: string;
   };
   hub: HubSettings;
 }

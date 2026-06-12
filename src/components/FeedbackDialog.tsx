@@ -5,6 +5,7 @@ import type {
   FeedbackSeverity,
   FeedbackAttachmentInput,
 } from '../types';
+import { useT } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -16,6 +17,7 @@ const TITLE_MAX = 80;
 const FILE_BYTE_LIMIT = 10 * 1024 * 1024;
 
 export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
+  const t = useT();
   const [category, setCategory] = useState<FeedbackCategory>('bug');
   const [severity, setSeverity] = useState<FeedbackSeverity | ''>('');
   const [title, setTitle] = useState('');
@@ -70,12 +72,12 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
         onSubmitted(res.id);
         onClose();
       } else {
-        setErr('反馈未送达，已留存草稿');
+        setErr(t("feedback.delivery_failed"));
       }
     } catch (e) {
       // eslint-disable-next-line no-console
       console.info('submit feedback failed', e);
-      setErr('反馈未送达，已留存草稿');
+      setErr(t("feedback.delivery_failed"));
     } finally {
       setSubmitting(false);
     }
@@ -88,10 +90,10 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
         style={{ maxWidth: 560 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3>提交反馈</h3>
+        <h3>{t("feedback.title")}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label>
-            分类
+            {t("feedback.category")}
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
@@ -104,7 +106,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             </select>
           </label>
           <label>
-            严重程度（选填）
+            {t("feedback.severity")}
             <select
               value={severity}
               onChange={(e) =>
@@ -112,7 +114,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
               }
               style={{ marginLeft: 8 }}
             >
-              <option value="">未指定</option>
+              <option value="">{t("feedback.severity_unspecified")}</option>
               <option value="blocker">blocker</option>
               <option value="major">major</option>
               <option value="minor">minor</option>
@@ -120,7 +122,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             </select>
           </label>
           <label>
-            标题（≤{TITLE_MAX} 字符）
+            {t("feedback.title_label", { max: TITLE_MAX })}
             <input
               maxLength={TITLE_MAX}
               value={title}
@@ -129,7 +131,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             />
           </label>
           <label>
-            详细描述
+            {t("feedback.description_label")}
             <textarea
               rows={6}
               value={description}
@@ -138,7 +140,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             />
           </label>
           <label>
-            联系邮箱（选填）
+            {t("feedback.email_label")}
             <input
               type="email"
               value={email}
@@ -147,7 +149,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             />
           </label>
           <label>
-            截图（PNG/JPG，最多 10 MB/张）
+            {t("feedback.screenshot_label")}
             <input
               type="file"
               multiple
@@ -156,7 +158,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
             />
           </label>
           <details>
-            <summary>自动附带（可逐项取消）</summary>
+            <summary>{t("feedback.auto_attach_summary")}</summary>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
               <label>
                 <input
@@ -164,7 +166,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
                   checked={incVersion}
                   onChange={(e) => setIncVersion(e.target.checked)}
                 />{' '}
-                应用版本号
+                {t("feedback.auto_app_version")}
               </label>
               <label>
                 <input
@@ -172,7 +174,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
                   checked={incOs}
                   onChange={(e) => setIncOs(e.target.checked)}
                 />{' '}
-                操作系统信息
+                {t("feedback.auto_os")}
               </label>
               <label>
                 <input
@@ -180,7 +182,7 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
                   checked={incLog}
                   onChange={(e) => setIncLog(e.target.checked)}
                 />{' '}
-                近期日志摘要（已脱敏）
+                {t("feedback.auto_log")}
               </label>
               <label>
                 <input
@@ -188,15 +190,15 @@ export function FeedbackDialog({ open, onClose, onSubmitted }: Props) {
                   checked={incDevice}
                   onChange={(e) => setIncDevice(e.target.checked)}
                 />{' '}
-                客户端设备 id（匿名）
+                {t("feedback.auto_device_id")}
               </label>
             </div>
           </details>
           {err && <div style={{ color: '#a33' }}>{err}</div>}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={onClose}>取消</button>
+            <button onClick={onClose}>{t("feedback.cancel")}</button>
             <button disabled={!valid || submitting} onClick={handleSubmit}>
-              {submitting ? '提交中…' : '提交'}
+              {submitting ? t("feedback.submitting") : t("feedback.submit")}
             </button>
           </div>
         </div>

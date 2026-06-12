@@ -1,5 +1,7 @@
 // Light helpers used across the UI.
 
+type T = (key: any, vars?: Record<string, string | number>) => string;
+
 export function formatTokens(n: number | null | undefined): string {
   if (n == null) return "—";
   if (n < 1000) return String(n);
@@ -15,16 +17,21 @@ export function formatBytes(n: number | null | undefined): string {
   return (n / (1024 * 1024)).toFixed(2) + "MB";
 }
 
-export function formatRelativeTime(iso: string | null | undefined): string {
+// Optional `t` lets callers render localized buckets ("5 分钟前" / "5m ago").
+// When omitted, falls back to the English compact form so non-React callers
+// (or transitional code) still get something readable.
+export function formatRelativeTime(iso: string | null | undefined, t?: T): string {
   if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const diff = (Date.now() - t) / 1000;
-  if (diff < 60) return `${Math.floor(diff)}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86_400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 86_400 * 30) return `${Math.floor(diff / 86_400)}d ago`;
-  const d = new Date(t);
+  const t0 = Date.parse(iso);
+  if (Number.isNaN(t0)) return iso;
+  const diff = (Date.now() - t0) / 1000;
+  const pick = (key: string, n: number, fallback: string) =>
+    t ? t(key, { n }) : fallback;
+  if (diff < 60) return pick("format.relative_now", Math.floor(diff), `${Math.floor(diff)}s ago`);
+  if (diff < 3600) return pick("format.relative_minutes", Math.floor(diff / 60), `${Math.floor(diff / 60)}m ago`);
+  if (diff < 86_400) return pick("format.relative_hours", Math.floor(diff / 3600), `${Math.floor(diff / 3600)}h ago`);
+  if (diff < 86_400 * 30) return pick("format.relative_days", Math.floor(diff / 86_400), `${Math.floor(diff / 86_400)}d ago`);
+  const d = new Date(t0);
   return d.toISOString().slice(0, 10);
 }
 

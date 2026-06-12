@@ -19,6 +19,9 @@ import {
 } from "../format";
 import { lookupContextWindow } from "../model-context";
 import { api } from "../api";
+import { useT, type TKey } from "../i18n";
+
+type TFn = (key: TKey, vars?: Record<string, string | number>) => string;
 
 // Effective context window for a turn = new input + cache reads + cache writes.
 // Using `input_tokens` alone misreads as "context shrinking" whenever prompt
@@ -451,13 +454,13 @@ export interface ViewerCounts {
   peakCtx: number;
 }
 
-const KIND_LABEL: Record<NodeKind, string> = {
-  user: "USER",
-  assistant: "ASSIST",
-  system: "SYSTEM",
-  tool_result: "RESULT",
-  sidechain: "SIDECHAIN",
-  meta: "META",
+const KIND_LABEL_KEYS: Record<NodeKind, "user" | "assistant" | "system" | "tool_result" | "sidechain" | "meta"> = {
+  user: "user",
+  assistant: "assistant",
+  system: "system",
+  tool_result: "tool_result",
+  sidechain: "sidechain",
+  meta: "meta",
 };
 
 function previewOf(node: SessionNode, max: number): string {
@@ -489,6 +492,7 @@ export function SessionViewer({
   previewChars,
   onCounts,
 }: Props) {
+  const t = useT();
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [toolFilter, setToolFilter] = useState<Set<string>>(new Set());
   const [currentUserIdx, setCurrentUserIdx] = useState(-1);
@@ -583,12 +587,12 @@ export function SessionViewer({
       }
     }
     return {
-      label: "主 Agent",
+      label: t("viewer.agent.main_label"),
       summary: session.summary,
       nodes: session.nodes,
       subagent: null,
     };
-  }, [session, activeAgentId, subagents]);
+  }, [session, activeAgentId, subagents, t]);
 
   // Reset filters and overrides when switching agents (their node ids are
   // disjoint, so old overrides would never match anyway, but clearing makes
@@ -804,14 +808,14 @@ export function SessionViewer({
   if (loading) {
     return (
       <div className="empty">
-        <div className="big">Loading session…</div>
+        <div className="big">{t("viewer.loading")}</div>
       </div>
     );
   }
   if (error) {
     return (
       <div className="empty">
-        <div className="big" style={{ color: "var(--error)" }}>Couldn't load session</div>
+        <div className="big" style={{ color: "var(--error)" }}>{t("viewer.load_failed")}</div>
         <div className="hint selectable">{error}</div>
       </div>
     );
@@ -819,11 +823,13 @@ export function SessionViewer({
   if (!session || !activeAgent || !sessionTotals || !agentStats) {
     return (
       <div className="empty">
-        <div className="big">No session selected</div>
+        <div className="big">{t("viewer.no_selected")}</div>
         <div className="hint">
-          Pick one from the list on the left. Use{" "}
-          <span className="kbd">Ctrl+Alt+F</span> to filter sessions, or{" "}
-          <span className="kbd">Ctrl+E</span> to expand all nodes after opening.
+          {t("viewer.no_selected_hint_prefix")}
+          <span className="kbd">Ctrl+Alt+F</span>
+          {t("viewer.no_selected_hint_mid")}
+          <span className="kbd">Ctrl+E</span>
+          {t("viewer.no_selected_hint_suffix")}
         </div>
       </div>
     );
@@ -842,24 +848,24 @@ export function SessionViewer({
       <div className="session-head">
         <div className="title selectable">{sSummary.title || sSummary.session_id}</div>
         <div className="meta-row">
-          <span className="meta-item"><span className="k">会话 ID</span><span className="v mono">{sSummary.session_id}</span></span>
-          {sSummary.cwd && <span className="meta-item"><span className="k">工作目录</span><span className="v mono">{sSummary.cwd}</span></span>}
-          {sSummary.git_branch && <span className="meta-item"><span className="k">分支</span><span className="v mono">{sSummary.git_branch}</span></span>}
-          <span className="meta-item"><span className="k">开始时间</span><span className="v mono">{formatLocalTime(sSummary.started_at)}</span></span>
+          <span className="meta-item"><span className="k">{t("viewer.meta.session_id")}</span><span className="v mono">{sSummary.session_id}</span></span>
+          {sSummary.cwd && <span className="meta-item"><span className="k">{t("viewer.meta.cwd")}</span><span className="v mono">{sSummary.cwd}</span></span>}
+          {sSummary.git_branch && <span className="meta-item"><span className="k">{t("viewer.meta.branch")}</span><span className="v mono">{sSummary.git_branch}</span></span>}
+          <span className="meta-item"><span className="k">{t("viewer.meta.started_at")}</span><span className="v mono">{formatLocalTime(sSummary.started_at)}</span></span>
         </div>
 
         {/* ---- Session-wide totals (parent + all Normal subagents) ---- */}
         <div className="metric-section">
           <div className="metric-section-label">
-            会话总览
+            {t("viewer.overview.heading")}
             {(sessionTotals.subagentCount > 0 || sessionTotals.asideQuestionCount > 0) && (
               <span className="metric-section-hint">
-                {sessionTotals.subagentCount > 0 && <>含 {sessionTotals.subagentCount} 个子代理</>}
+                {sessionTotals.subagentCount > 0 && <>{t("viewer.overview.with_subagents", { count: sessionTotals.subagentCount })}</>}
                 {sessionTotals.subagentCount > 0 && sessionTotals.asideQuestionCount > 0 && <> · </>}
                 {sessionTotals.asideQuestionCount > 0 && (
                   <>
-                    {sessionTotals.asideQuestionCount} 次 /aside
-                    <span className="aside-hint" title="对话使用了 /aside 命令开启旁路话题，与父会话内容重叠，未计入总览数字。">
+                    {t("viewer.overview.aside_count", { count: sessionTotals.asideQuestionCount })}
+                    <span className="aside-hint" title={t("viewer.overview.aside_tip")}>
                       ⓘ
                     </span>
                   </>
@@ -868,31 +874,31 @@ export function SessionViewer({
             )}
           </div>
           <div className="metric-grid">
-            <Metric label="消息数" value={String(sessionTotals.messageCount)} />
+            <Metric label={t("viewer.metric.message_count")} value={String(sessionTotals.messageCount)} />
             <Metric
-              label="工具调用次数"
+              label={t("viewer.metric.tool_call_count")}
               value={String(sessionTotals.toolCallTotal)}
-              tooltip={renderToolBreakdownTooltip(sessionTotals.toolCallByName)}
+              tooltip={renderToolBreakdownTooltip(sessionTotals.toolCallByName, t)}
             />
             {skillUsage.length > 0 && (
               <Metric
-                label="Skill 调用次数"
+                label={t("viewer.metric.skill_call_count")}
                 value={String(skillUsage.reduce((s, r) => s + r.count, 0))}
-                tooltip={renderSkillBreakdownTooltip(skillUsage)}
+                tooltip={renderSkillBreakdownTooltip(skillUsage, t)}
               />
             )}
-            <Metric label="读取文件数" value={String(sessionTotals.filesRead)} />
-            <Metric label="读取行数" value={String(sessionTotals.linesRead)} />
-            <Metric label="写入文件数" value={String(sessionTotals.filesWritten)} />
-            <Metric label="写入行数" value={String(sessionTotals.linesWritten)} />
+            <Metric label={t("viewer.metric.files_read")} value={String(sessionTotals.filesRead)} />
+            <Metric label={t("viewer.metric.lines_read")} value={String(sessionTotals.linesRead)} />
+            <Metric label={t("viewer.metric.files_written")} value={String(sessionTotals.filesWritten)} />
+            <Metric label={t("viewer.metric.lines_written")} value={String(sessionTotals.linesWritten)} />
             <Metric
-              label="累计 token (入/出)"
+              label={t("viewer.metric.cumulative_tokens")}
               value={`${formatTokens(sessionTotals.totalInputTokens)} / ${formatTokens(sessionTotals.totalOutputTokens)}`}
             />
-            <Metric label="会话持续时间" value={formatDuration(sessionTotals.durationMs)} />
-            <Metric label="AI 工作时间" value={formatDuration(sessionTotals.aiWorkMs)} />
-            <Metric label="AI 工作时间占比" value={sessionAiPctStr} />
-            <Metric label="启动子代理数" value={String(sessionTotals.subagentCount)} />
+            <Metric label={t("viewer.metric.session_duration")} value={formatDuration(sessionTotals.durationMs)} />
+            <Metric label={t("viewer.metric.ai_work_time")} value={formatDuration(sessionTotals.aiWorkMs)} />
+            <Metric label={t("viewer.metric.ai_work_pct")} value={sessionAiPctStr} />
+            <Metric label={t("viewer.metric.subagent_count")} value={String(sessionTotals.subagentCount)} />
           </div>
         </div>
 
@@ -900,7 +906,7 @@ export function SessionViewer({
         <div className={`metric-section agent-section${inSubagent ? " is-subagent" : ""}`}>
           <div className="metric-section-label">
             <span className="agent-section-title">
-              {inSubagent ? "🐣 当前子代理" : "当前 Agent"}
+              {inSubagent ? t("viewer.agent.heading_sub") : t("viewer.agent.heading_main")}
             </span>
             {subagents.length > 0 ? (
               <AgentSwitcher
@@ -924,24 +930,24 @@ export function SessionViewer({
                 type="button"
                 className="agent-back-btn"
                 onClick={exitSubagent}
-                title="返回父会话的启动节点"
-              >← 返回父会话</button>
+                title={t("viewer.agent.back_hint")}
+              >{t("viewer.agent.back")}</button>
             )}
           </div>
           <div className="metric-grid">
-            <Metric label="消息数" value={String(agentStats.messageCount)} />
-            <Metric label="用户介入次数" value={String(agentStats.interruptions)} />
+            <Metric label={t("viewer.metric.message_count")} value={String(agentStats.messageCount)} />
+            <Metric label={t("viewer.metric.interruptions")} value={String(agentStats.interruptions)} />
             <Metric
-              label="工具调用次数"
+              label={t("viewer.metric.tool_call_count")}
               value={String(agentStats.toolCallTotal)}
-              tooltip={renderToolBreakdownTooltip(agentStats.toolCallByName)}
+              tooltip={renderToolBreakdownTooltip(agentStats.toolCallByName, t)}
             />
-            <Metric label="读取文件数" value={String(agentStats.filesRead)} />
-            <Metric label="读取行数" value={String(agentStats.linesRead)} />
-            <Metric label="写入文件数" value={String(agentStats.filesWritten)} />
-            <Metric label="写入行数" value={String(agentStats.linesWritten)} />
-            <Metric label="上下文峰值" value={formatTokens(aSummary.peak_context_tokens)} />
-            <Metric label="Agent 持续时间" value={formatDuration(agentStats.durationMs)} />
+            <Metric label={t("viewer.metric.files_read")} value={String(agentStats.filesRead)} />
+            <Metric label={t("viewer.metric.lines_read")} value={String(agentStats.linesRead)} />
+            <Metric label={t("viewer.metric.files_written")} value={String(agentStats.filesWritten)} />
+            <Metric label={t("viewer.metric.lines_written")} value={String(agentStats.linesWritten)} />
+            <Metric label={t("viewer.metric.peak_ctx")} value={formatTokens(aSummary.peak_context_tokens)} />
+            <Metric label={t("viewer.metric.agent_duration")} value={formatDuration(agentStats.durationMs)} />
           </div>
         </div>
       </div>
@@ -949,34 +955,34 @@ export function SessionViewer({
       <div className="timeline-table">
         <div className="timeline-header">
           <div className="th-left">
-            <span className="th-title">消息</span>
+            <span className="th-title">{t("viewer.timeline.messages")}</span>
             <span className="th-meta">
-              {visibleNodes.length} / {activeAgent.nodes.length} 条
+              {t("viewer.timeline.visible_count", { visible: visibleNodes.length, total: activeAgent.nodes.length })}
             </span>
-            <span className="th-user-nav" title="跳转到上一条 / 下一条 USER 消息">
+            <span className="th-user-nav" title={t("viewer.timeline.user_nav_hint")}>
               <button
                 type="button"
                 className="th-nav-btn"
                 onClick={() => jumpToUser(-1)}
                 disabled={userIndices.length === 0}
-                title="上一条 USER"
-                aria-label="上一条 USER"
-              >↑ USER</button>
+                title={t("viewer.timeline.prev_user_hint")}
+                aria-label={t("viewer.timeline.prev_user_hint")}
+              >{t("viewer.timeline.prev_user")}</button>
               <button
                 type="button"
                 className="th-nav-btn"
                 onClick={() => jumpToUser(1)}
                 disabled={userIndices.length === 0}
-                title="下一条 USER"
-                aria-label="下一条 USER"
-              >USER ↓</button>
+                title={t("viewer.timeline.next_user_hint")}
+                aria-label={t("viewer.timeline.next_user_hint")}
+              >{t("viewer.timeline.next_user")}</button>
               <span className="th-meta">{currentUserIdx >= 0 ? `${currentUserIdx + 1}/` : ""}{userIndices.length}</span>
             </span>
             <span className="th-msg-search">
               <input
                 ref={messageSearchInputRef}
                 className={`th-search-input${searchMissed ? " missed" : ""}`}
-                placeholder="搜索消息… (Ctrl+F)"
+                placeholder={t("viewer.timeline.search_placeholder")}
                 value={messageSearch}
                 onChange={(e) => {
                   setMessageSearch(e.target.value);
@@ -988,20 +994,20 @@ export function SessionViewer({
                     runMessageSearch();
                   }
                 }}
-                aria-label="在当前会话中搜索消息"
+                aria-label={t("viewer.timeline.search_aria")}
               />
               <button
                 type="button"
                 className="th-nav-btn"
                 onClick={runMessageSearch}
                 disabled={messageSearch.trim().length === 0}
-                title="在当前会话中搜索（点击或 Enter）"
-                aria-label="搜索消息"
+                title={t("viewer.timeline.search_button_hint")}
+                aria-label={t("viewer.timeline.search_button_aria")}
               >🔍</button>
             </span>
           </div>
           <div className="th-right">
-            <span className="th-title">上下文 · 工具</span>
+            <span className="th-title">{t("viewer.timeline.right_title")}</span>
             <ToolFilterDropdown
               universe={toolUniverse}
               selected={toolFilter}
@@ -1035,7 +1041,7 @@ export function SessionViewer({
                 >
                   <div className="chev">{expanded ? "▾" : "▸"}</div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", overflow: "hidden" }}>
-                    <span className={`badge ${n.kind}`}>{KIND_LABEL[n.kind]}</span>
+                    <span className={`badge ${n.kind}`}>{t(`viewer.kind.${KIND_LABEL_KEYS[n.kind]}` as const)}</span>
                     {!expanded && (
                       <span className="preview">{previewOf(n, previewChars)}</span>
                     )}
@@ -1046,9 +1052,9 @@ export function SessionViewer({
                   <div className="stats">
                     {n.usage && (
                       <>
-                        <span title="Output tokens this turn">out {outStr}</span>
+                        <span title={t("viewer.timeline.out_tokens_hint")}>out {outStr}</span>
                         {(n.usage.cache_read_input_tokens > 0 || n.usage.cache_creation_input_tokens > 0) && (
-                          <span title="cache_read / cache_create tokens">
+                          <span title={t("viewer.timeline.cache_tokens_hint")}>
                             ⇣ {formatTokens(n.usage.cache_read_input_tokens)}
                             {" "}+ {formatTokens(n.usage.cache_creation_input_tokens)}
                           </span>
@@ -1063,7 +1069,7 @@ export function SessionViewer({
                 {expanded && (
                   <div className="node-body selectable">
                     {n.parts.map((p, i) => (
-                      <PartView key={i} part={p} kind={n.kind} />
+                      <PartView key={i} part={p} kind={n.kind} t={t} />
                     ))}
                   </div>
                 )}
@@ -1074,6 +1080,7 @@ export function SessionViewer({
                   viz={viz}
                   onPick={(name) => setToolFilter(new Set([name]))}
                   onEnterSubagent={(agentId) => enterSubagent(agentId, n.id)}
+                  t={t}
                 />
               </div>
             </div>
@@ -1119,10 +1126,12 @@ function ToolChips({
   viz,
   onPick,
   onEnterSubagent,
+  t,
 }: {
   viz: NodeViz | undefined;
   onPick: (name: string) => void;
   onEnterSubagent: (agentId: string) => void;
+  t: TFn;
 }) {
   if (!viz || (viz.toolNames.length === 0 && !viz.subagentLabel)) return null;
   const names = viz.toolNames;
@@ -1135,7 +1144,7 @@ function ToolChips({
       {viz.subagentLabel && viz.subagentId && (
         <span
           className="tool-chip subagent"
-          title={`进入子代理 ${viz.subagentLabel}`}
+          title={t("viewer.timeline.enter_subagent", { label: viz.subagentLabel })}
           onClick={(e) => {
             e.stopPropagation();
             onEnterSubagent(viz.subagentId!);
@@ -1150,7 +1159,7 @@ function ToolChips({
           <span
             key={name}
             className="tool-chip"
-            title={`仅看含 ${name} 的行`}
+            title={t("viewer.timeline.filter_to_tool", { name })}
             onClick={(e) => {
               e.stopPropagation();
               onPick(name);
@@ -1180,6 +1189,7 @@ function AgentSwitcher({
   activeAgentId: string | null;
   onPick: (agentId: string | null) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -1203,9 +1213,9 @@ function AgentSwitcher({
   const triggerLabel = activeAgentId
     ? (() => {
         const sa = subagents.find((s) => s.agent_id === activeAgentId);
-        return sa ? `🐣 ${sa.agent_type}@${sa.type_ordinal}` : "🐣 子代理";
+        return sa ? `🐣 ${sa.agent_type}@${sa.type_ordinal}` : t("viewer.agent.sub_default_label");
       })()
-    : "主 Agent";
+    : t("viewer.agent.main_label");
 
   const pick = (next: string | null) => {
     onPick(next);
@@ -1218,9 +1228,9 @@ function AgentSwitcher({
         type="button"
         className={`agent-switcher-trigger${activeAgentId ? " active" : ""}`}
         onClick={() => setOpen((v) => !v)}
-        title="切换查看的 Agent"
+        title={t("viewer.agent.switcher_hint")}
       >
-        Agent · <span className="cur">{triggerLabel}</span> ▾
+        {t("viewer.agent.switcher_label")} · <span className="cur">{triggerLabel}</span> ▾
       </button>
       {open && (
         <div className="agent-switcher-menu" role="menu">
@@ -1231,7 +1241,7 @@ function AgentSwitcher({
             onClick={() => pick(null)}
           >
             <span className="dot">{activeAgentId === null ? "●" : "○"}</span>
-            <span className="name">主 Agent</span>
+            <span className="name">{t("viewer.agent.main_label")}</span>
           </div>
           {subagents.map((sa) => {
             const sel = activeAgentId === sa.agent_id;
@@ -1245,13 +1255,13 @@ function AgentSwitcher({
                 onClick={() => pick(sa.agent_id)}
                 title={
                   aside
-                    ? "由 /aside 命令开启的旁路对话 — 内容与父会话重叠，仅供查看"
+                    ? t("viewer.agent.aside_tip")
                     : sa.description ?? ""
                 }
               >
                 <span className="dot">{sel ? "●" : "○"}</span>
                 <span className="name mono">{sa.agent_type}@{sa.type_ordinal}</span>
-                {aside && <span className="kind-tag">aside</span>}
+                {aside && <span className="kind-tag">{t("viewer.agent.aside_tag")}</span>}
                 {sa.description && (
                   <span className="desc">{truncate(sa.description, 36)}</span>
                 )}
@@ -1278,6 +1288,7 @@ function ToolFilterDropdown({
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -1306,8 +1317,8 @@ function ToolFilterDropdown({
   };
 
   const label = selected.size === 0
-    ? "🔧 工具 ▾"
-    : `🔧 ${selected.size} 项 ▾`;
+    ? t("viewer.timeline.tool_filter_idle")
+    : t("viewer.timeline.tool_filter_active", { count: selected.size });
 
   return (
     <div className="tool-filter" ref={rootRef}>
@@ -1315,7 +1326,7 @@ function ToolFilterDropdown({
         type="button"
         className={`tool-filter-trigger${selected.size > 0 ? " active" : ""}`}
         onClick={() => setOpen((v) => !v)}
-        title="按工具名过滤"
+        title={t("viewer.timeline.tool_filter_hint")}
       >
         {label}
       </button>
@@ -1323,7 +1334,7 @@ function ToolFilterDropdown({
         <div className="tool-filter-menu" role="menu">
           {universe.length === 0 && (
             <div className="tool-filter-item" style={{ opacity: 0.6 }}>
-              <span className="name">本会话无工具调用</span>
+              <span className="name">{t("viewer.timeline.tool_filter_empty")}</span>
             </div>
           )}
           {universe.map(({ name, count }) => {
@@ -1344,8 +1355,8 @@ function ToolFilterDropdown({
           })}
           {universe.length > 0 && (
             <div className="tool-filter-actions">
-              <button onClick={() => onChange(new Set(universe.map((u) => u.name)))}>全选</button>
-              <button onClick={() => onChange(new Set())}>清空</button>
+              <button onClick={() => onChange(new Set(universe.map((u) => u.name)))}>{t("viewer.timeline.tool_filter_select_all")}</button>
+              <button onClick={() => onChange(new Set())}>{t("viewer.timeline.tool_filter_clear")}</button>
             </div>
           )}
         </div>
@@ -1373,11 +1384,12 @@ function Metric({
 }
 
 // Renders a tool-breakdown table inside a Metric tooltip (used by both the
-// session-totals "工具调用次数" and the agent-level one).
+// session-totals "tool calls" and the agent-level one).
 function renderToolBreakdownTooltip(
   byName: Array<[string, number]>,
+  t: TFn,
 ): ReactNode {
-  if (byName.length === 0) return <span className="metric-tooltip-empty">无工具调用</span>;
+  if (byName.length === 0) return <span className="metric-tooltip-empty">{t("viewer.timeline.tooltip_no_tools")}</span>;
   return (
     <table className="metric-tooltip-table">
       <tbody>
@@ -1392,11 +1404,11 @@ function renderToolBreakdownTooltip(
   );
 }
 
-// Per-skill breakdown for the "Skill 调用次数" tooltip. Rows are already sorted
-// by count desc on the Rust side (see core/src/stats.rs::skill_usage). When a
+// Per-skill breakdown for the skill-call tooltip. Rows are already sorted by
+// count desc on the Rust side (see core/src/stats.rs::skill_usage). When a
 // skill had any error, append "·err N" to its count cell so it stands out.
-function renderSkillBreakdownTooltip(rows: SkillUsage[]): ReactNode {
-  if (rows.length === 0) return <span className="metric-tooltip-empty">无 Skill 调用</span>;
+function renderSkillBreakdownTooltip(rows: SkillUsage[], t: TFn): ReactNode {
+  if (rows.length === 0) return <span className="metric-tooltip-empty">{t("viewer.timeline.tooltip_no_skills")}</span>;
   return (
     <table className="metric-tooltip-table">
       <tbody>
@@ -1414,13 +1426,13 @@ function renderSkillBreakdownTooltip(rows: SkillUsage[]): ReactNode {
   );
 }
 
-function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
+function PartView({ part, kind, t }: { part: MessagePart; kind: NodeKind; t: TFn }) {
   switch (part.kind) {
     case "text": {
       const cls = kind === "assistant" ? "part assistant-text" : "part text";
       return (
         <div className={cls}>
-          <div className="label">{kind === "assistant" ? "Assistant" : "Text"}</div>
+          <div className="label">{kind === "assistant" ? t("viewer.parts.assistant") : t("viewer.parts.text")}</div>
           <div className="text-body">{part.text}</div>
         </div>
       );
@@ -1428,7 +1440,7 @@ function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
     case "thinking":
       return (
         <div className="part thinking">
-          <div className="label">Thinking</div>
+          <div className="label">{t("viewer.parts.thinking")}</div>
           <div className="text-body">{part.text}</div>
         </div>
       );
@@ -1436,7 +1448,7 @@ function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
       return (
         <div className="part tool_use">
           <div className="label">
-            Tool call <span className="name">{part.name}</span>
+            {t("viewer.parts.tool_call")} <span className="name">{part.name}</span>
             <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
           </div>
           <pre className="body">{part.input}</pre>
@@ -1446,7 +1458,7 @@ function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
       return (
         <div className={`part tool_result${part.is_error ? " error" : ""}`}>
           <div className="label">
-            Tool result {part.is_error && <span style={{ color: "var(--error)" }}>· error</span>}
+            {t("viewer.parts.tool_result")} {part.is_error && <span style={{ color: "var(--error)" }}>{t("viewer.parts.tool_error")}</span>}
             <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
           </div>
           <pre className="body">{part.content}</pre>
@@ -1455,21 +1467,21 @@ function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
     case "image":
       return (
         <div className="part note">
-          <div className="label">Image</div>
-          <div className="text-body">{part.media_type} ({part.bytes}B)</div>
+          <div className="label">{t("viewer.parts.image")}</div>
+          <div className="text-body">{t("viewer.parts.image_size", { type: part.media_type, bytes: part.bytes })}</div>
         </div>
       );
     case "attachment":
       return (
         <div className="part note">
-          <div className="label">Attachment</div>
+          <div className="label">{t("viewer.parts.attachment")}</div>
           <div className="text-body">{part.path}{part.mime ? ` · ${part.mime}` : ""}</div>
         </div>
       );
     case "note":
       return (
         <div className="part note">
-          <div className="label">System</div>
+          <div className="label">{t("viewer.parts.system")}</div>
           <div className="text-body">{part.text}</div>
         </div>
       );
