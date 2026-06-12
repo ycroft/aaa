@@ -1,3 +1,12 @@
+v0.11.1
+-------
+- 重构：拆分会话查看器（SessionViewer）单文件 1489 行的混合实现
+  - 改建为 components/SessionViewer/ 目录：index.tsx 容器（~570 行）+ stats.ts / viz.ts 纯计算 + parts/ 子组件 + hooks/ 复用逻辑
+  - 抽出 useDropdownDismiss 消除 AgentSwitcher 与 ToolFilterDropdown 之间的 click-outside / Esc 处理重复
+  - 抽出 useMessageSearch / useSkillUsage 把消息搜索和 skill 用量请求两块独立逻辑从容器组件里剥离
+  - 子组件不再 prop-drill `t`，各自直接 useT()；tooltip 渲染从 helper 函数升级为 `<ToolBreakdownTooltip />` / `<SkillBreakdownTooltip />` 组件
+  - 行为零变化：仅文件组织调整，所有 UI 路径（消息搜索、子代理切换、tool filter、Ctrl+E、skill tooltip）保持原样
+
 v0.11.0
 -------
 - 前端国际化（i18n）：默认中文 UI，支持切换到英文
