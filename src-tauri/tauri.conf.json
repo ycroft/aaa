@@ -37,5 +37,13 @@
     "category": "DeveloperTool",
     "shortDescription": "Multi-backend AI agent session analyzer",
     "longDescription": "AAA inspects local session logs from Claude Code, opencode, and other AI coding agents. View conversations, drill into tool calls and reasoning, and audit context-window growth."
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://aaa.example.intranet/v1/updates/manifest"
+      ],
+      "pubkey": "REPLACE_WITH_TAURI_PUBLIC_KEY"
+    }
   }
 }
