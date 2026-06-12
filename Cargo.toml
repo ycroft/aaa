@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "core"]
+members = ["src-tauri", "core", "server"]
 resolver = "2"
 
 [profile.release]
