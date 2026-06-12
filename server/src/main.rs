@@ -12,8 +12,28 @@ async fn main() -> anyhow::Result<()> {
     let cfg = aaa_hub::config::Config::load_from(&cfg_path)?;
     let db_path = cfg.server.data_dir.join("aaa-hub.db");
     let pool = aaa_hub::db::open(&db_path).await?;
+
+    let notifier: Arc<dyn aaa_hub::notify::Notifier> = if cfg.notify.email.enabled {
+        match aaa_hub::notify::email::EmailNotifier::new(
+            cfg.notify.email.clone(),
+            &cfg.server.public_url,
+        ) {
+            Ok(n) => Arc::new(n),
+            Err(e) => {
+                tracing::warn!(error=%e, "email notifier disabled (init failed)");
+                Arc::new(aaa_hub::notify::NoopNotifier)
+            }
+        }
+    } else {
+        Arc::new(aaa_hub::notify::NoopNotifier)
+    };
+
     let bind = cfg.server.bind.clone();
-    let state = aaa_hub::state::AppState { cfg: Arc::new(cfg), db: pool };
+    let state = aaa_hub::state::AppState {
+        cfg: Arc::new(cfg),
+        db: pool,
+        notifier,
+    };
     let app = aaa_hub::build_router_with(state);
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!(%bind, "aaa-hub listening");

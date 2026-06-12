@@ -2,13 +2,32 @@
 #![allow(dead_code)]
 
 use aaa_hub::config::*;
+use aaa_hub::notify::Notifier;
 use aaa_hub::state::AppState;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 pub struct Harness {
     pub dir: TempDir,
     pub state: AppState,
+    pub notifier_counter: Arc<AtomicUsize>,
+}
+
+#[derive(Clone)]
+struct CountingNotifier {
+    n: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl Notifier for CountingNotifier {
+    async fn feedback_created(
+        &self,
+        _ticket_id: &str,
+        _fb: &aaa_hub::domain::feedback::NewFeedback,
+    ) {
+        self.n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 pub async fn make() -> Harness {
@@ -48,9 +67,16 @@ pub async fn make() -> Harness {
     std::fs::create_dir_all(&cfg.uploads.dir).unwrap();
     std::fs::create_dir_all(&cfg.updates.artifacts_dir).unwrap();
     let pool = aaa_hub::db::open(&dir.path().join("test.db")).await.unwrap();
+    let counter = Arc::new(AtomicUsize::new(0));
+    let notifier = Arc::new(CountingNotifier { n: counter.clone() });
     let state = AppState {
         cfg: Arc::new(cfg),
         db: pool,
+        notifier,
     };
-    Harness { dir, state }
+    Harness {
+        dir,
+        state,
+        notifier_counter: counter,
+    }
 }

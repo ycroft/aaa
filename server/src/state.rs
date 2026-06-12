@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::notify::Notifier;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 
@@ -6,4 +7,5 @@ use std::sync::Arc;
 pub struct AppState {
     pub cfg: Arc<Config>,
     pub db: SqlitePool,
+    pub notifier: Arc<dyn Notifier>,
 }
