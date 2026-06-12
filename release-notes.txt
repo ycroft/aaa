@@ -1,3 +1,8 @@
+v0.8.2
+------
+- 新增设计文档 docs/aaa-hub-update-feedback-server-design.md：服务端 aaa-hub 的整体架构、API、数据模型、客户端集成原则。
+- 新增实现计划 docs/aaa-hub-implementation-plan.md：26 个任务的 TDD 步骤分解，覆盖服务端到桌面端的接入。
+
 v0.8.1
 ------
 - 修复消息搜索框旁边的 🔍 按钮高度比输入框矮 3px 不对齐：按钮在 .th-msg-search 作用域内显式锁定 22px 高度。
