@@ -1,0 +1,27 @@
+node_modules
+dist
+dist-pkg
+dist-ssr
+*.local
+.vite
+
+# TypeScript build outputs
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Rust
+target/
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/gen/schemas/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

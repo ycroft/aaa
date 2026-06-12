@@ -1,0 +1,236 @@
+// TypeScript mirror of the Rust model in `src-tauri/src/model.rs`.
+
+export interface AppInfo {
+  name: string;
+  version: string;
+  author: string;
+  description: string;
+  release_notes: string;
+}
+
+export interface ProviderInfo {
+  id: string;
+  display_name: string;
+  default_root: string | null;
+  root_exists: boolean;
+  is_implemented: boolean;
+}
+
+export interface SessionSummary {
+  provider_id: string;
+  session_id: string;
+  title: string | null;
+  cwd: string | null;
+  git_branch: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  message_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  peak_context_tokens: number;
+  source_path: string;
+}
+
+export type NodeKind =
+  | "user"
+  | "assistant"
+  | "system"
+  | "tool_result"
+  | "sidechain"
+  | "meta";
+
+export type MessagePart =
+  | { kind: "text"; text: string }
+  | { kind: "thinking"; text: string }
+  | { kind: "tool_use"; tool_use_id: string; name: string; input: string }
+  | { kind: "tool_result"; tool_use_id: string; content: string; is_error: boolean }
+  | { kind: "image"; media_type: string; bytes: number }
+  | { kind: "attachment"; path: string; mime: string | null }
+  | { kind: "note"; text: string };
+
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  service_tier: string | null;
+}
+
+export interface SessionNode {
+  id: string;
+  parent_id: string | null;
+  kind: NodeKind;
+  timestamp: string | null;
+  model: string | null;
+  parts: MessagePart[];
+  usage: TokenUsage | null;
+  cumulative_context_tokens: number | null;
+  raw_size_bytes: number;
+}
+
+export type SubAgentKind = "normal" | "aside_question" | "compact";
+
+export interface SubAgentSession {
+  agent_id: string;
+  agent_type: string;
+  /** What kind of sub-agent record this is — drives stats roll-up and UI labelling. */
+  kind: SubAgentKind;
+  /** 1-based ordinal among same-type subagents in this parent session. */
+  type_ordinal: number;
+  description: string | null;
+  /** parent session's `tool_use_id` for the `Agent` call that spawned this. */
+  parent_tool_use_id: string | null;
+  summary: SessionSummary;
+  nodes: SessionNode[];
+}
+
+export interface SessionDetail {
+  summary: SessionSummary;
+  nodes: SessionNode[];
+  /** Empty for providers without a sub-agent concept (e.g. opencode). */
+  subagents: SubAgentSession[];
+}
+
+/// One row of the skill-usage report (mirrors `aaa_core::stats::SkillUsage`).
+///
+/// Phase-1 detection only fires for `claude-code` sessions, where each skill
+/// invocation is a structured `tool_use { name: "Skill" }`. For other
+/// backends this comes back empty until the heuristic phase-2 detector lands
+/// — see `core/src/stats.rs` for the plan.
+export interface SkillUsage {
+  skill_id: string;
+  count: number;
+  error_count: number;
+  first_at: string | null;
+  last_at: string | null;
+}
+
+export type AiMode = "none" | "agent" | "api";
+export type TemplateScope = "single" | "all";
+
+export interface AgentConfig {
+  id: string;
+  name: string;
+  cmd_template: string;
+  is_preset: boolean;
+}
+
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  scope: TemplateScope;
+}
+
+export interface AiSettings {
+  mode: AiMode;
+  selected_agent: string | null;
+  agents: AgentConfig[];
+  prompt_templates: PromptTemplate[];
+}
+
+export interface AppSettings {
+  provider_roots: Record<string, string>;
+  remotes: RemoteHostInfo[];
+  ai: AiSettings;
+  ui: {
+    theme: string;
+    preview_chars: number;
+    auto_expand_threshold_tokens: number;
+  };
+}
+
+export interface RemoteHostInfo {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  user: string;
+  auth_kind: "password" | "private_key";
+  provider_root_overrides: Record<string, string>;
+  last_synced_at: string | null;
+  host_key_known: boolean;
+}
+
+export type RemoteAuthInput =
+  | { kind: "password"; password: string }
+  | { kind: "private_key"; path: string; passphrase: string | null };
+
+export interface RemoteHostInput {
+  id: string | null;
+  label: string;
+  host: string;
+  port: number;
+  user: string;
+  auth: RemoteAuthInput | null;
+  provider_root_overrides: Record<string, string>;
+}
+
+export interface RemoteProviderInfo {
+  provider_id: string;
+  remote_root: string | null;
+  exists: boolean;
+}
+
+export interface RemoteCacheInfo {
+  provider_id: string;
+  local_root: string;
+  last_modified: string | null;
+  size_bytes: number;
+}
+
+export interface SyncStats {
+  files_pulled: number;
+  files_skipped: number;
+  files_deleted_locally: number;
+  bytes_pulled: number;
+  elapsed_ms: number;
+}
+
+export interface RemoteOpenResult {
+  local_root: string;
+  sync_stats: SyncStats;
+}
+
+export type SyncPhase =
+  | "connecting"
+  | "probing"
+  | "listing"
+  | "downloading"
+  | "cleaning"
+  | "done";
+
+export interface SyncProgress {
+  phase: SyncPhase;
+  current_file: string | null;
+  files_done: number;
+  files_total: number;
+  bytes_done: number;
+  bytes_total: number;
+}
+
+/// Event payload emitted from the Tauri side as `remote-progress`.
+export interface RemoteProgressEvent {
+  task_id: string;
+  progress: SyncProgress;
+}
+
+// ---- UI-only filter model (not mirrored on the Rust side). ----
+
+export type TimeRangePreset = "all" | "24h" | "1w" | "1m" | "custom";
+
+export interface SessionFilter {
+  search: string;
+  cwd: string | null;          // null = any cwd
+  timePreset: TimeRangePreset;
+  customStart: string | null;  // YYYY-MM-DD, only used when timePreset === "custom"
+  customEnd: string | null;    // YYYY-MM-DD, inclusive end-of-day
+}
+
+export const EMPTY_FILTER: SessionFilter = {
+  search: "",
+  cwd: null,
+  timePreset: "all",
+  customStart: null,
+  customEnd: null,
+};

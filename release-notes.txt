@@ -1,0 +1,16 @@
+v0.8.1
+------
+- 修复消息搜索框旁边的 🔍 按钮高度比输入框矮 3px 不对齐：按钮在 .th-msg-search 作用域内显式锁定 22px 高度。
+- 修复 About 对话框 release-notes 区域被 maxHeight: 240 截断、下方留出大片空白的问题：modal-body 改为 flex 列布局，release-notes 块自动撑满剩余高度。
+
+v0.8.0
+------
+- 会话视图新增「消息搜索框 + 搜索按钮」：在当前会话/子代理的消息时间线里全文匹配（含 text/thinking/note/tool 输入输出/附件路径），按钮点击或回车触发搜索；连续点击在多条命中之间循环跳转，命中节点会自动展开并滚动到位；未命中时输入框背景闪红，下次编辑自动恢复。
+- 快捷键调整：Ctrl+F 改为聚焦「会话内消息搜索框」（更贴近浏览器/编辑器的"页面内查找"语义）；Ctrl+Alt+F 聚焦左侧会话列表过滤框；Toolbar / View 菜单中的提示文案同步更新。
+
+v0.7.0
+------
+- About 对话框：新增「关于 AAA」窗口，展示软件名称、版本、作者（Yin Yuhao）、简介与当前版本 release-notes。
+- 版本号从 Cargo 包元数据自动注入，避免硬编码漂移。
+- 新增 Tauri 命令 get_app_info：把版本号、release-notes 在编译期通过 env! / include_str! 内联到二进制。
+- CLAUDE.md 提交约束补充：每次 bump 版本号必须同步追加 release-notes.txt 条目。

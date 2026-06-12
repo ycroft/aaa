@@ -1,0 +1,31 @@
+[package]
+name = "aaa-core"
+version = "0.8.1"
+edition = "2021"
+description = "Pure-Rust core: session model + provider implementations. No GUI/tauri deps."
+
+[lib]
+name = "aaa_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+walkdir = "2"
+anyhow = "1"
+thiserror = "1"
+russh = "0.46"
+russh-sftp = "2"
+russh-keys = "0.46"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
+fs2 = "0.4"
+ulid = { version = "1", features = ["serde"] }
+async-trait = "0.1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+log = "0.4"
+flexi_logger = { version = "0.31", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros"] }
