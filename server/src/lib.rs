@@ -1,3 +1,4 @@
+pub mod config;
 pub mod routes;
 
 use axum::Router;
