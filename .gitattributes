@@ -1,0 +1,5 @@
+# Disable any line-ending normalization performed by git.
+# The `-text` attribute makes git treat every file as binary for the
+# purpose of CRLF/LF conversion: nothing is rewritten on checkin or
+# checkout, regardless of the user's global core.autocrlf setting.
+* -text

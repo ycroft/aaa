@@ -1,3 +1,15 @@
+v0.10.1
+-------
+- 文档：按当前代码重写 README.md
+  - opencode backend 状态由 stub 改为 Implemented（SQLite at ~/.local/share/opencode/opencode.db）
+  - 补齐近几版新增能力：会话内消息搜索、Skill 用量统计、AI 辅助分析、远端 SSH 同步与缓存、会话导出、aaa-hub（自动更新 + 反馈）、Win98 主题
+  - Architecture 树同步 core/{remote,feedback,log_buffer,log_excerpt,logger,stats}、src-tauri/{hub,hub_commands}、server/、docs/、平台脚本与 vendor 缓存目录
+  - 快捷键表勘误：Ctrl+F 聚焦会话内消息搜索框，Ctrl+Alt+F 聚焦会话列表过滤框，新增 Ctrl+Shift+E 导出
+  - Run 段指向实际的 dev/build-release 脚本而不是裸 npx tauri
+- 仓库：禁止 git 任何形式的行尾改写
+  - 新增 .gitattributes：`* -text`（所有文件按二进制对待，checkin/checkout 都不转换 EOL）
+  - 本地 git config：core.autocrlf=false / core.eol=lf / core.safecrlf=false
+
 v0.10.0
 -------
 - 桌面端接入 aaa-hub：自动检查更新（tauri-plugin-updater）+ 反馈对话框 + "我的反馈"列表

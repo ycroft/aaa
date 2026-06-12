@@ -89,7 +89,9 @@ UI 里的"上下文窗口走势"会跟模型自身的窗口上限做比对，新
 
 ## 提交约束（重要）
 
-> **每次 commit 都必须同步 bump 版本号 + 追加 release notes。** 这是 AAA 子项目的硬性约束，没有例外——哪怕只是改一个 typo、调一行 CSS、补一句注释。版本号是分发产物（deb/rpm/AppImage/MSI/NSIS/portable）唯一的可识别标记，提交不动版本号会导致同事拿到的安装包与代码对不上。
+> **涉及代码/功能改动的 commit 必须同步 bump 版本号 + 追加 release notes。** 版本号是分发产物（deb/rpm/AppImage/MSI/NSIS/portable）唯一的可识别标记，代码变了不动版本号会导致同事拿到的安装包与代码对不上。
+>
+> **纯文档改动（README、CLAUDE.md、docs/、注释、commit message 错字之类）可以不动版本号、也不必追加 release notes。** 这类 commit 不会改变二进制行为，硬要 bump 反而会污染发布历史。判断标准：编译产物字节是否会变？不会就跳过版本号。`release-notes.txt` 例外——它会被 `include_str!` 内联进二进制，所以改它本身就算"代码改动"，需要伴随版本号 bump。
 
 需要同步修改的 4 处版本字段（必须保持一致）：
 
@@ -108,11 +110,11 @@ UI 里的"上下文窗口走势"会跟模型自身的窗口上限做比对，新
 
 版本号语义参考 SemVer：
 
-- **patch**（`0.1.0 → 0.1.1`）：bug 修复、文案、UI 微调、依赖小升级
+- **patch**（`0.1.0 → 0.1.1`）：bug 修复、UI 微调、依赖小升级（注：纯文档改动**不**走 patch，不动版本号）
 - **minor**（`0.1.0 → 0.2.0`）：新增 backend、新增 Tauri 命令、新增可见功能
 - **major**（`0.1.0 → 1.0.0`）：数据模型/命令面破坏性改动，或正式发布里程碑
 
-工作流：改完代码后，先更新这 4 个版本字段 + `release-notes.txt`，再 `git add`，把版本号变更、release notes 变更和功能变更放进**同一个 commit**。如果忘了，就用 `git commit --amend` 补回去（前提是该提交还没推到远端）。
+工作流：涉及代码/功能改动时，先更新这 4 个版本字段 + `release-notes.txt`，再 `git add`，把版本号变更、release notes 变更和功能变更放进**同一个 commit**。如果忘了，就用 `git commit --amend` 补回去（前提是该提交还没推到远端）。纯文档改动跳过版本号步骤即可。
 
 ## 构建与分发
 
