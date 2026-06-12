@@ -19,6 +19,8 @@ interface Props {
   onAiAnalysis: () => void;
   canAiAnalysis: boolean;
   aiAnalysisHint?: string;
+  onFeedback: () => void;
+  hubConnected: boolean;
 }
 
 const TIME_PRESETS: { value: TimeRangePreset; label: string; hint: string }[] = [
@@ -46,6 +48,8 @@ export function Toolbar({
   onAiAnalysis,
   canAiAnalysis,
   aiAnalysisHint,
+  onFeedback,
+  hubConnected,
 }: Props) {
   // Distinct, non-empty cwds present in the current session list — sorted, capped to keep menu sane.
   const cwdOptions = useMemo(() => {
@@ -171,6 +175,14 @@ export function Toolbar({
         <span className="strong">{rootLabel}</span>
       </span>
       <span className="sep" />
+      <button
+        className="tbtn"
+        onClick={onFeedback}
+        disabled={!hubConnected}
+        data-hint={hubConnected ? '提交问题或建议' : '无法连接到 hub'}
+      >
+        ✉ Feedback
+      </button>
       <button className="tbtn" onClick={onSettings} data-hint="Open settings (Ctrl+,)">
         ⚙ Settings
       </button>

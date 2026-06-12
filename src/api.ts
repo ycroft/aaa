@@ -2,12 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppInfo,
   AppSettings,
+  FeedbackInput,
+  HubStatus,
+  LocalTicket,
+  LocalTickets,
   ProviderInfo,
   RemoteCacheInfo,
   RemoteHostInfo,
   RemoteHostInput,
   RemoteOpenResult,
   RemoteProviderInfo,
+  RemoteTicketView,
   SessionDetail,
   SessionSummary,
   SkillUsage,
@@ -51,4 +56,13 @@ export const api = {
     invoke<string[]>("export_all_sessions", { providerId, root, targetDir }),
   launchAgent: (cmdTemplate: string, workDir: string, promptContent: string) =>
     invoke<void>("launch_agent", { cmdTemplate, workDir, promptContent }),
+
+  // ---- aaa-hub: silent on transport failure (returns Disconnected/null) ----
+  hubStatus: () => invoke<HubStatus>("hub_status"),
+  submitFeedback: (input: FeedbackInput) =>
+    invoke<LocalTicket | null>("submit_feedback", { input }),
+  getFeedbackStatus: (id: string, token: string) =>
+    invoke<RemoteTicketView | null>("get_feedback_status", { id, token }),
+  listLocalTickets: () => invoke<LocalTickets>("list_local_tickets"),
+  refreshHub: () => invoke<void>("refresh_hub"),
 };

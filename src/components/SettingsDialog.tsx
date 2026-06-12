@@ -11,6 +11,7 @@ import type {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { RemoteEditor } from "./RemoteEditor";
+import { FeedbackList } from "./FeedbackList";
 
 interface Props {
   open: boolean;
@@ -21,13 +22,15 @@ interface Props {
   onRemotesChanged?: () => void;
 }
 
-type Tab = "backends" | "remotes" | "ai" | "display";
+type Tab = "backends" | "remotes" | "ai" | "display" | "hub" | "feedback";
 
 const TAB_LABELS: Record<Tab, string> = {
   backends: "后端",
   remotes: "远程主机",
   ai: "AI辅助分析",
   display: "显示",
+  hub: "Hub",
+  feedback: "我的反馈",
 };
 
 function genId() {
@@ -136,7 +139,7 @@ export function SettingsDialog({
           <button className="close" onClick={onClose} data-hint="Close (Esc)">×</button>
         </div>
         <div style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border)" }}>
-          {(["backends", "remotes", "ai", "display"] as Tab[]).map((t) => (
+          {(["backends", "remotes", "ai", "display", "hub", "feedback"] as Tab[]).map((t) => (
             <button
               key={t}
               className={"btn" + (tab === t ? " primary" : "")}
@@ -331,6 +334,46 @@ export function SettingsDialog({
               />
               <div className="help">折叠节点中显示的文本长度。</div>
             </div>
+          </div>
+        )}
+
+        {tab === "hub" && (
+          <div className="modal-body">
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>aaa-hub</h3>
+            <div className="field">
+              <label>Base URL</label>
+              <input
+                type="url"
+                placeholder="https://aaa.example.intranet"
+                value={draft.hub?.base_url ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    hub: { ...d.hub, base_url: e.target.value },
+                  }))
+                }
+              />
+              <div className="help">
+                留空表示禁用 hub。配置后客户端会探测连通性，连不上时反馈按钮自动灰显。
+              </div>
+            </div>
+            <div className="field">
+              <label>设备 id（匿名 ULID）</label>
+              <input
+                type="text"
+                value={draft.hub?.device_id ?? ""}
+                readOnly
+                style={{ opacity: 0.7 }}
+              />
+              <div className="help">首次启动时自动生成；服务端用它关联同一台机器的多次反馈。</div>
+            </div>
+          </div>
+        )}
+
+        {tab === "feedback" && (
+          <div className="modal-body">
+            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>我的反馈</h3>
+            <FeedbackList />
           </div>
         )}
 

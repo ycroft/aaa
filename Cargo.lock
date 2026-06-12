@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aaa"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "aaa-core",
  "base64 0.22.1",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "aaa-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "anyhow",
  "async-trait",

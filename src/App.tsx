@@ -17,6 +17,8 @@ import { Toolbar } from "./components/Toolbar";
 import { SessionList } from "./components/SessionList";
 import { SessionViewer, type ViewerCounts } from "./components/SessionViewer";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { UpdateBanner } from "./components/UpdateBanner";
+import { FeedbackDialog } from "./components/FeedbackDialog";
 import { AiAnalysisDialog } from "./components/AiAnalysisDialog";
 import { AboutDialog } from "./components/AboutDialog";
 import { ProviderSplash } from "./components/ProviderSplash";
@@ -44,6 +46,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   remotes: [],
   ai: { mode: "none", selected_agent: null, agents: [], prompt_templates: [] },
   ui: { theme: "light", preview_chars: 220, auto_expand_threshold_tokens: 0 },
+  hub: { base_url: "", device_id: "" },
 };
 
 export function App() {
@@ -63,6 +66,8 @@ export function App() {
   });
   const [splashOpen, setSplashOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [hubConnected, setHubConnected] = useState(false);
   const [aiAnalysisOpen, setAiAnalysisOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
@@ -126,6 +131,26 @@ export function App() {
   }, [active]);
 
   useEffect(() => { void refreshSessions(); }, [refreshSessions]);
+
+  // Probe the hub on startup, then every 30 minutes. All failures stay silent;
+  // the only effect on the UI is the Toolbar's "Feedback" button enable state.
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const s = await api.hubStatus();
+        if (alive) setHubConnected(s === "Connected");
+      } catch {
+        if (alive) setHubConnected(false);
+      }
+    };
+    void tick();
+    const t = setInterval(tick, 30 * 60 * 1000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
 
   const pickBackend = useCallback(
     async (p: ProviderInfo, customRoot?: string) => {
@@ -283,6 +308,14 @@ export function App() {
     setProviders(ps);
     // Re-fetch remotes too — settings may have edited them via Tab.
     await refreshRemotes();
+    // Re-bind hub client to the (possibly new) base_url and re-probe status.
+    try {
+      await api.refreshHub();
+      const s = await api.hubStatus();
+      setHubConnected(s === "Connected");
+    } catch {
+      setHubConnected(false);
+    }
     // If the active backend's override changed, re-scan.
     if (active && !active.remote) {
       const newRoot = next.provider_roots[active.provider.id] || active.provider.default_root || "";
@@ -462,6 +495,7 @@ export function App() {
   return (
     <div className="app">
       <Menubar menus={menus} />
+      <UpdateBanner />
       <Toolbar
         filter={filter}
         onFilterChange={setFilter}
@@ -479,6 +513,8 @@ export function App() {
         onAiAnalysis={handleAiAnalysis}
         canAiAnalysis={true}
         aiAnalysisHint="启动AI辅助分析"
+        onFeedback={() => setFeedbackOpen(true)}
+        hubConnected={hubConnected}
       />
       <div className="body">
         <SessionList
@@ -536,6 +572,11 @@ export function App() {
         onClose={() => setAiAnalysisOpen(false)}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <FeedbackDialog
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        onSubmitted={(id) => setStatus(`反馈已提交：#${id.slice(0, 6)}`)}
+      />
       <RemoteProgressDialog
         open={pendingRemote !== null}
         taskId={pendingRemote?.taskId ?? null}

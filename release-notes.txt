@@ -1,3 +1,16 @@
+v0.10.0
+-------
+- 桌面端接入 aaa-hub：自动检查更新（tauri-plugin-updater）+ 反馈对话框 + "我的反馈"列表
+- Toolbar 新增 Feedback 按钮；hub 不可达时自动灰显，tooltip 提示原因
+- 顶部 UpdateBanner：启动 5 秒后探测；有新版本时显示「立即安装/稍后」，下载进度可视化
+- FeedbackDialog 表单：必填 category/title/description；选填 severity/contact_email/截图（PNG/JPG ≤10MB）
+- 自动附带预览面板（可逐项取消）：版本号 / OS / 近期日志摘要（已脱敏） / 设备 id（匿名 ULID）
+- 设置面板新增「Hub」与「我的反馈」两个 tab；保存设置后自动 refreshHub + 重新探测连通性
+- 网络失败一律静默：仅 console.info / log::info；UI 不弹任何错误 toast 或对话框
+- 新增 5 个 Tauri 命令：hub_status / submit_feedback / get_feedback_status / list_local_tickets / refresh_hub
+- 注册 tauri-plugin-updater + tauri-plugin-process（用于 relaunch）
+- AppSettings.hub { base_url, device_id }；首次启动生成匿名 ULID 设备 id
+
 v0.9.0
 ------
 - aaa-hub 服务端骨架完工：Rust/Axum/SQLite 单二进制（server/ workspace 成员，自身版本 0.1.0）。

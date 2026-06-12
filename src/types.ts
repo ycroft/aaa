@@ -138,6 +138,56 @@ export interface AppSettings {
     preview_chars: number;
     auto_expand_threshold_tokens: number;
   };
+  hub: HubSettings;
+}
+
+export interface HubSettings {
+  base_url: string;
+  device_id: string;
+}
+
+// ---------------- Hub / feedback / update types ----------------
+
+export type HubStatus = "Connected" | "Disconnected";
+
+export type FeedbackCategory = "bug" | "feature" | "question" | "other";
+export type FeedbackSeverity = "blocker" | "major" | "minor" | "trivial";
+
+export interface FeedbackAttachmentInput {
+  filename: string;
+  mime: string;
+  bytes_b64: string;
+}
+
+export interface FeedbackInput {
+  category: FeedbackCategory;
+  severity?: FeedbackSeverity;
+  title: string;
+  description: string;
+  contact_email?: string;
+  include_version: boolean;
+  include_os: boolean;
+  include_log_excerpt: boolean;
+  include_device_id: boolean;
+  attachments: FeedbackAttachmentInput[];
+}
+
+export interface LocalTicket {
+  id: string;
+  claim_token: string;
+  title: string;
+  category: string;
+  created_at: number;
+}
+
+export interface LocalTickets {
+  items: LocalTicket[];
+}
+
+export interface RemoteTicketView {
+  status: string;
+  admin_note?: string;
+  updated_at: number;
 }
 
 export interface RemoteHostInfo {
