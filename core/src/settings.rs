@@ -15,6 +15,19 @@ pub struct AppSettings {
     pub remotes: Vec<RemoteHost>,
     pub ai: AiSettings,
     pub ui: UiSettings,
+    pub hub: HubSettings,
+}
+
+/// Settings for the optional aaa-hub backend (auto-update + feedback).
+/// `base_url` empty means "not configured" — client treats every probe as
+/// Disconnected and never makes outbound requests. `device_id` is generated
+/// once on first save and persisted; lets the hub correlate multiple
+/// submissions from the same machine without identifying the user.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct HubSettings {
+    pub base_url: String,
+    pub device_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -136,15 +149,35 @@ fn settings_path() -> Result<PathBuf> {
 pub fn load() -> Result<AppSettings> {
     let p = settings_path()?;
     if !p.exists() {
-        return Ok(AppSettings::default());
+        let mut s = AppSettings::default();
+        ensure_device_id(&mut s);
+        save(&s)?;
+        return Ok(s);
     }
-    let s = fs::read_to_string(&p).context("read settings.json")?;
-    match serde_json::from_str(&s) {
-        Ok(parsed) => Ok(parsed),
+    let raw = fs::read_to_string(&p).context("read settings.json")?;
+    match serde_json::from_str::<AppSettings>(&raw) {
+        Ok(mut parsed) => {
+            if ensure_device_id(&mut parsed) {
+                let _ = save(&parsed);
+            }
+            Ok(parsed)
+        }
         Err(e) => {
             log::warn!("settings.json parse failed at {:?}: {}; falling back to defaults", p, e);
-            Ok(AppSettings::default())
+            let mut s = AppSettings::default();
+            ensure_device_id(&mut s);
+            Ok(s)
         }
+    }
+}
+
+/// Returns true if a new id was generated (caller may want to persist).
+fn ensure_device_id(s: &mut AppSettings) -> bool {
+    if s.hub.device_id.is_empty() {
+        s.hub.device_id = ulid::Ulid::new().to_string();
+        true
+    } else {
+        false
     }
 }
 

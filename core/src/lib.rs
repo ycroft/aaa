@@ -1,3 +1,6 @@
+pub mod feedback;
+pub mod log_buffer;
+pub mod log_excerpt;
 pub mod logger;
 pub mod model;
 pub mod providers;
