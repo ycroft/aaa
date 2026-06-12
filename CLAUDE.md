@@ -10,24 +10,49 @@
 tools/aaa/
 ├── core/             # tauri-free 业务核心（cargo workspace 成员）
 │   └── src/
-│       ├── model.rs        # SessionSummary / SessionNode / MessagePart / TokenUsage
+│       ├── model.rs        # 统一数据模型（SessionSummary/SessionNode/MessagePart/TokenUsage/SubAgentSession 等）
 │       ├── providers/      # SessionProvider trait + claude_code / opencode 实现
-│       └── settings.rs     # AppSettings 持久化（~/.config/aaa/settings.json）
-├── src-tauri/        # Tauri host：commands.rs 暴露 5 个命令给前端
-├── src/              # React + TypeScript UI（Vite 8 / React 18）
-│   ├── App.tsx              # 顶层状态机：当前 backend / 会话列表 / 选中会话
-│   ├── api.ts               # 包装 @tauri-apps/api 的 invoke
-│   ├── components/          # Menubar / Toolbar / SessionList / SessionViewer / SettingsDialog / ProviderSplash / StatusBar
-│   ├── hooks/useStatusHint  # 状态栏提示
+│       ├── settings.rs     # AppSettings 持久化（~/.config/aaa/settings.json）
+│       ├── remote/         # SSH 远程同步子系统（ssh/mirror/probe/known_hosts）
+│       ├── stats.rs        # 跨 provider 的按需统计（skill 用量聚合等）
+│       ├── feedback.rs     # 本地 feedback ticket 持久化（~/.config/aaa/tickets.json）
+│       ├── log_buffer.rs   # WARN+ERROR 日志环形缓冲（给 feedback excerpt 用）
+│       ├── log_excerpt.rs  # 日志脱敏/截断
+│       └── logger.rs       # 滚动文件日志（flexi_logger，AAA_LOG 环境变量覆盖）
+├── server/            # aaa-hub 服务端（cargo workspace 成员，Axum + SQLite）
+│   ├── src/
+│   │   ├── routes/          # health / feedback / updates(manifest+artifacts) / admin
+│   │   ├── domain/          # feedback / update 领域模型
+│   │   └── notify/          # email 通知（lettre SMTP）
+│   ├── admin-ui/            # 管理后台静态页（index.html + admin.js）
+│   ├── migrations/          # SQLite 迁移脚本
+│   └── tests/               # 11 个集成测试
+├── src-tauri/         # Tauri host
+│   └── src/
+│       ├── commands.rs      # 核心命令 + 远程同步 + 导出 + AI agent 启动
+│       ├── hub_commands.rs  # aaa-hub 相关命令（feedback / update）
+│       └── hub.rs           # HubClient（reqwest 封装，fail-silent 规则）
+├── src/               # React + TypeScript UI（Vite 8 / React 18）
+│   ├── App.tsx              # 顶层状态机
+│   ├── api.ts               # 包装所有 Tauri invoke
+│   ├── model-context.ts     # 模型→上下文窗口静态查找表（正则前缀匹配）
 │   ├── types.ts             # 与 core/model.rs 对齐的 TS 类型
-│   └── format.ts            # 路径/数字/时间格式化
-├── scripts/          # build-release / install-linux / package-portable
-├── vendor/tauri-cache/  # Linux AppImage 打包所需上游产物（避免 build 时联网拉 GitHub）
-├── vendor/tauri-cache-windows/  # Windows MSI/NSIS 打包所需上游产物（同上）
-└── Cargo.toml        # workspace = [src-tauri, core]，release profile = LTO + strip + opt-level=s
+│   ├── format.ts            # 路径/数字/时间格式化
+│   ├── hooks/useStatusHint  # 状态栏提示
+│   ├── styles/app.css       # 全局样式
+│   └── components/          # 14 个组件（见下文）
+├── docs/              # 设计文档（aaa-hub 实现方案、更新/反馈服务设计）
+├── scripts/           # 构建/安装/打包脚本（Linux + Windows）
+├── vendor/tauri-cache/         # Linux AppImage 打包上游产物
+├── vendor/tauri-cache-windows/ # Windows MSI/NSIS 打包上游产物
+└── Cargo.toml         # workspace = [src-tauri, core, server]
 ```
 
-技术栈：Tauri 2 + React 18 + TypeScript 5 + Vite 8（前端），Rust（后端 + host），Node ≥ 20.19。
+技术栈：Tauri 2 + React 18 + TypeScript 5 + Vite 8（前端），Rust（core + src-tauri + server），Node ≥ 20.19。
+
+### 前端组件一览
+
+`Menubar` · `Toolbar` · `SessionList` · `SessionViewer` · `SettingsDialog` · `ProviderSplash` · `StatusBar` · `AboutDialog` · `AiAnalysisDialog` · `FeedbackDialog` · `FeedbackList` · `RemoteEditor` · `RemoteProgressDialog` · `UpdateBanner`
 
 ## 架构与扩展点
 
@@ -39,12 +64,17 @@ tools/aaa/
 pub trait SessionProvider: Send + Sync {
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
-    fn default_root(&self) -> Option<PathBuf>;     // 该 backend 在本机的默认日志目录
-    fn is_implemented(&self) -> bool { true }      // 未实现则 UI 灰显
+    fn default_root(&self) -> Option<PathBuf>;
+    fn is_implemented(&self) -> bool { true }
+    fn remote_root_candidates(&self) -> Vec<&'static str> { Vec::new() }
+    fn remote_sync_files(&self) -> Option<Vec<&'static str>> { None }
     fn list_sessions(&self, root: &PathBuf) -> Result<Vec<SessionSummary>>;
     fn load_session(&self, source_path: &PathBuf) -> Result<SessionDetail>;
 }
 ```
+
+- `remote_root_candidates()` — 远程主机上的候选日志路径（`{home}` 占位符会被替换为远程 `$HOME`）
+- `remote_sync_files()` — 选择性同步文件列表（如 SQLite 仅需 db 文件本身）；`None` 表示整树镜像
 
 新增 backend 的步骤：
 
@@ -52,40 +82,93 @@ pub trait SessionProvider: Send + Sync {
 2. 在 `providers/mod.rs::all()` 里注册一行。
 3. 不需要动 `commands.rs`，也不需要动前端——`list_providers` 命令会自动把它列出来。
 
-统一数据模型（`core/src/model.rs`）：
+### 统一数据模型（`core/src/model.rs`）
 
 | 类型 | 作用 |
 |------|------|
 | `SessionSummary` | 列表项：title / cwd / branch / 起止时间 / 消息数 / token 累计 / `peak_context_tokens` |
 | `SessionNode` | 时间线节点：kind（user/assistant/system/tool_result/sidechain/meta）+ `parts` + `usage` + `cumulative_context_tokens` |
 | `MessagePart` | 节点内片段：Text / Thinking / ToolUse / ToolResult / Image / Attachment / Note |
-| `TokenUsage` | input / output / cache_creation / cache_read，`context_window()` 把 4 项加起来 |
+| `TokenUsage` | input / output / cache_creation / cache_read / service_tier，`context_window()` 把前 4 项加起来 |
+| `SessionDetail` | 完整会话：summary + nodes + subagents |
+| `SubAgentSession` | 子代理会话：agent_id / agent_type / kind / parent_tool_use_id / summary + nodes |
+| `SubAgentKind` | 子代理类型：Normal（真实子代理）/ AsideQuestion（/aside 侧链）/ Compact（自动压缩快照） |
+| `ProviderInfo` | 序列化的 provider 描述符（id / display_name / default_root / root_exists / is_implemented） |
 
 UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个累计最大值字段——所有 provider 都需要正确填充它。
 
-Tauri 命令面（`src-tauri/src/commands.rs`，对应 `src/api.ts`）：
+### Tauri 命令面
+
+`src-tauri/src/commands.rs` + `hub_commands.rs`，对应 `src/api.ts`：
 
 | 命令 | 用途 |
 |------|------|
+| `get_app_info` | 返回 AppInfo（name / version / author / release_notes，release_notes 由 include_str! 内联） |
 | `list_providers` | 返回所有 backend + 默认目录是否存在 |
 | `list_sessions` | 列指定 backend 下的会话（支持目录覆盖） |
 | `load_session` | 按文件路径加载完整 `SessionDetail` |
-| `get_settings` / `save_settings` | 读写 `AppSettings`（含 provider 目录覆盖、UI 偏好、AI 集成预留字段） |
+| `session_skill_usage` | 按需计算 skill 用量统计（当前仅 claude-code 有结构化数据） |
+| `get_settings` / `save_settings` | 读写 `AppSettings`（remotes 字段由专用命令管理，不会被通用保存覆盖） |
+| `list_remotes` / `save_remote` / `delete_remote` | 远程 SSH 主机 CRUD |
+| `list_remote_caches` | 列出已同步到本地的远程缓存 |
+| `remote_probe` | 探测远程主机上可用的 provider |
+| `remote_open` | SSH 连接 → 探测 → SFTP 增量同步，通过 Tauri event 流式报告进度，支持 `remote_cancel` 取消 |
+| `remote_cancel` | 取消进行中的 `remote_open` |
+| `check_command_exists` | 检查命令是否在 PATH 上可用 |
+| `export_session` / `export_all_sessions` | 导出会话为 pretty-printed JSON |
+| `launch_agent` | 在新终端窗口启动 AI agent（写入 prompt.txt 后通过 cmd_template 展开命令） |
+| `hub_status` | 探测 aaa-hub 健康端点 |
+| `submit_feedback` | 提交 feedback ticket（可选附件 + 日志 excerpt），本地也留存一份 |
+| `get_feedback_status` | 查询 ticket 远端状态 |
+| `list_local_tickets` | 列出本地已提交的 ticket |
+| `check_update` | 预留（前端直接调用 @tauri-apps/plugin-updater） |
+| `refresh_hub` | 设置变更后重新绑定 HubClient |
+
+### Settings 结构（`core/src/settings.rs`）
+
+`AppSettings` 持久化在 `~/.config/aaa/settings.json`：
+
+| 字段 | 说明 |
+|------|------|
+| `provider_roots` | `HashMap<String, String>` — provider 目录覆盖 |
+| `remotes` | `Vec<RemoteHost>` — SSH 远程主机列表 |
+| `ai` | `AiSettings` — mode（None/Agent/Api）+ agents 列表 + prompt 模板 |
+| `ui` | `UiSettings` — theme / preview_chars / auto_expand_threshold_tokens |
+| `hub` | `HubSettings` — base_url + device_id（空 base_url = 未配置，不发请求） |
+
+### 远程同步子系统（`core/src/remote/`）
+
+通过 SSH（russh）连接远程主机，增量同步 agent 日志到本地缓存（`~/.cache/aaa/remotes/<host_id>/<provider_id>/`）。
+
+- `ssh.rs` — SSH 连接、SFTP 会话、TOFU host-key 验证
+- `mirror.rs` — 增量目录镜像（mtime 对比）或选择性文件同步
+- `probe.rs` — 探测远程主机上各 provider 的日志目录
+- `known_hosts.rs` — TOFU host-key 存储
+- 抽象 `RemoteFs` trait 便于测试 mock
+
+### aaa-hub 服务端（`server/`）
+
+独立部署的 Axum Web 服务，为桌面客户端提供反馈提交、更新检查等功能：
+
+- **路由**：`/v1/feedback`（创建/查询）、`/v1/updates/manifest`（版本清单）、`/v1/updates/artifacts`（静态文件）、`/admin`（管理后台）、`/healthz`
+- **存储**：SQLite（sqlx + migrations）
+- **通知**：SMTP 邮件（lettre）
+- **限流**：governor（feedback 创建、manifest 查询）
+- **认证**：admin token
+- 遵循 fail-silent 规则：客户端侧所有 hub 错误都静默处理，不弹给用户
 
 ## 当前 Backend
 
 | ID | 状态 | 默认目录 | 说明 |
 |----|------|---------|------|
-| `claude-code` | 已实现 | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | 逐行 JSONL 解析，按 `type` 字段映射节点 |
-| `opencode` | 已实现 | `~/.local/share/opencode/opencode.db`（可在设置里覆盖目录或直接指向 db 文件） | 读 SQLite `session/message/part` 三张表；`source_path` 编码为 `<db>#<session_id>`；tool 调用合并为单个 ToolUse 节点 |
+| `claude-code` | 已实现 | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | 逐行 JSONL 解析，按 `type` 字段映射节点；含子代理（`subagents/agent-<id>.jsonl`） |
+| `opencode` | 已实现 | `~/.local/share/opencode/opencode.db`（可在设置里覆盖目录或直接指向 db 文件） | 读 SQLite `session/message/part` 三张表；`source_path` 编码为 `<db>#<session_id>`；tool 调用合并为单个 ToolUse 节点；`remote_sync_files()` 返回选择性文件列表 |
 
-## 模型参考
+## 模型上下文窗口
 
-UI 里的"上下文窗口走势"会跟模型自身的窗口上限做比对，新增模型时在此登记，便于在前端做峰值/超限提示。
+`src/model-context.ts` 维护静态查找表，正则前缀匹配，首个命中即返回。未匹配时回退到 `session.peak_context_tokens`。新增模型在此文件登记。
 
-| 模型 | 上下文窗口 | 备注 |
-|------|-----------|------|
-| GLM-4.7 | 200KB | — |
+当前覆盖：Claude 系列（opus-4 ≥4.6 = 1M，其余 200K）· GPT 系列（4o/4-turbo = 128K，4 = 32K，3.5 = 16K）· o1 系列（o1 = 200K，o1-preview/mini = 128K）。
 
 ## 提交约束（重要）
 
@@ -102,11 +185,13 @@ UI 里的"上下文窗口走势"会跟模型自身的窗口上限做比对，新
 | `tools/aaa/src-tauri/Cargo.toml` | `[package].version` |
 | `tools/aaa/core/Cargo.toml` | `[package].version` |
 
+> 注：`server/Cargo.toml` 版本号独立管理，不参与同步。
+
 外加一处必须同步更新的文件：
 
 | 文件 | 要做的事 |
 |------|---------|
-| `tools/aaa/release-notes.txt` | 在文件**顶部**追加新版本块：先写 `vX.Y.Z` 标题行，再用一行短横线分隔，最后用 `- ` 列出本次提交的关键改动。该文件由 `src-tauri/src/commands.rs` 通过 `include_str!("../../release-notes.txt")` 在编译期内联到二进制，About 对话框直接展示其内容；忘了改这个文件，About 里看到的就是上一版的描述。 |
+| `tools/aaa/release-notes.txt` | 在文件**顶部**追加新版本块：先写 `vX.Y.Z` 标题行，再用一行短横线分隔，最后用 `- ` 列出本次提交的关键改动。该文件由 `src-tauri/src/commands.rs` 通过 `include_str!("../../release-notes.txt")` 在编译期内联到二进制，About 对话框直接展示其内容。 |
 
 版本号语义参考 SemVer：
 
@@ -191,7 +276,7 @@ PATH=$HOME/.local/node/bin:$PATH ./scripts/build-release.sh
 - Node ≥ 20.19（Vite 8 要求），从 nodejs.org 装 LTS 即可
 - Rust stable（`rustup-init.exe`）
 - Microsoft Edge WebView2 Runtime —— Win 11 与现行 Win 10 自带；老镜像可去微软官网下载 Evergreen 安装一次
-- 可选：构建 MSI 需要 WiX，构建 NSIS 需要 NSIS。`scripts\build-release.ps1` 启动时会从 `vendor\tauri-cache-windows\` 把 WiX/NSIS 工具链摆到 `%LOCALAPPDATA%\tauri\`，跳过 tauri-bundler 自身的 GitHub 下载。**首次进库时 vendor 目录是空的**，需要在能连 GitHub 的环境里跑一次 `vendor\tauri-cache-windows\README.md` 里给出的下载命令并提交，之后内网构建机就完全离线可用。
+- 可选：构建 MSI 需要 WiX，构建 NSIS 需要 NSIS。`scripts\build-release.ps1` 启动时会从 `vendor\tauri-cache-windows\` 把工具链摆到 `%LOCALAPPDATA%\tauri\`，跳过 tauri-bundler 自身的 GitHub 下载。**首次进库时 vendor 目录是空的**，需要在能连 GitHub 的环境里跑一次 `vendor\tauri-cache-windows\README.md` 里给出的下载命令并提交，之后内网构建机就完全离线可用。
 
 ### Windows · 构建 release
 
@@ -238,7 +323,7 @@ portable zip 内含 `bin\aaa.exe` + 图标 + 自包含 `install.ps1`/`install.cm
 
 | 脚本 | 用途 |
 |------|------|
-| `scripts/dev.sh` | 本地快速运行（Vite HMR + cargo 增量重编 + 自动开窗） |
+| `scripts/dev.sh` / `scripts/dev.ps1` / `scripts/dev.cmd` | 本地快速运行（Vite HMR + cargo 增量重编 + 自动开窗） |
 | `scripts/build-release.sh` | Linux release 构建（含 deb/rpm/appimage） |
 | `scripts/install-linux.sh` | 本机安装到 `~/.local` 或自定义 prefix |
 | `scripts/package-portable.sh` | Linux portable tarball（含自包含 install.sh） |
