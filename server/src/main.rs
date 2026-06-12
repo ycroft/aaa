@@ -29,10 +29,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let bind = cfg.server.bind.clone();
+    let limiters = aaa_hub::ratelimit::build(&cfg.ratelimit);
     let state = aaa_hub::state::AppState {
         cfg: Arc::new(cfg),
         db: pool,
         notifier,
+        limiters,
     };
     let app = aaa_hub::build_router_with(state);
     let listener = tokio::net::TcpListener::bind(&bind).await?;

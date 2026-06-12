@@ -1,3 +1,15 @@
+v0.9.0
+------
+- aaa-hub 服务端骨架完工：Rust/Axum/SQLite 单二进制（server/ workspace 成员，自身版本 0.1.0）。
+- API：/healthz、/v1/updates/manifest、/v1/updates/artifacts/*、/v1/feedback CRUD（含 multipart 附件）、/admin/api/* 全套（list/patch/download/publish）。
+- 反馈鉴权：匿名 ticket + 32 字节 base64url claim_token，constant-time 校验。
+- 升级：semver 扫 artifacts_dir，每平台返回离线生成的 .sig 内容；ServeDir 直接静态分发产物。
+- Admin：Bearer token + 简单 SPA（admin-ui/index.html + admin.js，无前端构建链）。
+- 通知：lettre 异步 SMTP，3 次指数退避，失败仅记日志。
+- 限流：governor keyed limiter，POST /v1/feedback 按小时、GET manifest 按分钟，X-Forwarded-For 优先。
+- 18 个集成/单元测试覆盖 health/config/db/feedback CRUD/attachments/manifest/notify/admin/ratelimit。
+- 桌面端尚未接入；下一版完成 HubClient + UpdateBanner + FeedbackDialog + FeedbackList。
+
 v0.8.2
 ------
 - 新增设计文档 docs/aaa-hub-update-feedback-server-design.md：服务端 aaa-hub 的整体架构、API、数据模型、客户端集成原则。

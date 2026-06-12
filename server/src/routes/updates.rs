@@ -5,7 +5,13 @@ use axum::{extract::State, routing::get, Json, Router};
 use serde_json::json;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/v1/updates/manifest", get(manifest))
+    Router::new().route("/v1/updates/manifest", get(manifest_handler))
+}
+
+pub async fn manifest_handler(
+    State(s): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    manifest(State(s)).await
 }
 
 async fn manifest(State(s): State<AppState>) -> Result<Json<serde_json::Value>, AppError> {

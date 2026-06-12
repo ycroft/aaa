@@ -15,9 +15,24 @@ use ulid::Ulid;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/v1/feedback", post(create))
+        .route("/v1/feedback", post(create_handler))
         .route("/v1/feedback/:id", get(get_one))
         .route("/v1/feedback/:id/attach", post(attach))
+}
+
+/// Same as `router` but without the rate-limited POST /v1/feedback (caller mounts
+/// that route under a per-route limiter middleware in `lib.rs`).
+pub fn unlimited_router() -> Router<AppState> {
+    Router::new()
+        .route("/v1/feedback/:id", get(get_one))
+        .route("/v1/feedback/:id/attach", post(attach))
+}
+
+pub async fn create_handler(
+    State(s): State<AppState>,
+    Json(input): Json<NewFeedback>,
+) -> Result<(StatusCode, Json<CreateResponse>), AppError> {
+    create(State(s), Json(input)).await
 }
 
 #[derive(Deserialize)]

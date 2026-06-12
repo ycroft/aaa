@@ -69,10 +69,12 @@ pub async fn make() -> Harness {
     let pool = aaa_hub::db::open(&dir.path().join("test.db")).await.unwrap();
     let counter = Arc::new(AtomicUsize::new(0));
     let notifier = Arc::new(CountingNotifier { n: counter.clone() });
+    let limiters = aaa_hub::ratelimit::build(&cfg.ratelimit);
     let state = AppState {
         cfg: Arc::new(cfg),
         db: pool,
         notifier,
+        limiters,
     };
     Harness {
         dir,
