@@ -106,17 +106,6 @@ button { font-family: inherit; }
   height: 30px;
   font-size: 12px;
 }
-.menubar .brand {
-  display: flex; align-items: center; gap: 6px;
-  padding: 0 10px 0 4px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  color: var(--text-1);
-}
-.menubar .brand .dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-}
 .menu {
   position: relative;
 }
@@ -127,6 +116,12 @@ button { font-family: inherit; }
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   cursor: default;
+}
+/* Accelerator letter inside the menubar label, e.g. the "F" in "File(F)".
+   Underlining matches the classic Windows convention so users recognize it
+   as the Alt+<letter> hint. */
+.menu > button .acc {
+  text-decoration: underline;
 }
 .menu > button:hover, .menu.open > button {
   background: var(--bg-hover);

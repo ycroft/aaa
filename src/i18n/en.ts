@@ -4,9 +4,6 @@ import type { Catalog } from "./index";
 // `Catalog` type below. Adding/removing keys without updating zh.ts (or the
 // other way round) will fail to compile.
 export const en: Catalog = {
-  app: {
-    brand_hint: "AAA · multi-backend AI agent session analyzer",
-  },
   menu: {
     file: "File",
     view: "View",

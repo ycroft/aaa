@@ -445,6 +445,7 @@ function AppInner() {
     () => [
       {
         label: t("menu.file"),
+        accelerator: "F",
         items: [
           {
             label: t("menu.switch_backend"),
@@ -488,6 +489,7 @@ function AppInner() {
       },
       {
         label: t("menu.view"),
+        accelerator: "V",
         items: [
           {
             label: expandAll ? t("menu.collapse_all") : t("menu.expand_all"),
@@ -530,6 +532,7 @@ function AppInner() {
       },
       {
         label: t("menu.help"),
+        accelerator: "H",
         items: [
           {
             label: t("menu.about"),

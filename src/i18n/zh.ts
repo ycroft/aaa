@@ -2,9 +2,6 @@
 // enforced by the `Catalog = typeof zh` constraint in index.ts.
 
 export const zh = {
-  app: {
-    brand_hint: "AAA · 多后端 AI 编码代理会话分析器",
-  },
   menu: {
     file: "文件",
     view: "视图",

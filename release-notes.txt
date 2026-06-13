@@ -1,3 +1,8 @@
+v1.3.3
+-------
+- 改动：菜单栏左侧的 "● AAA" logo 块去掉，节省横向空间，菜单本身从最左侧开始。
+- 新增：菜单栏支持 Alt + 加速键打开对应菜单——文件(F) / 视图(V) / 帮助(H)，加速字母在按钮上以下划线显示，按 Alt+F / Alt+V / Alt+H 即可展开（开着时再按一次或按 Esc 关闭）；纯 Alt 触发，与 Ctrl+Alt+F 等组合键不冲突。MenuDef 新增可选 accelerator 字段，未填则该菜单仅响应鼠标。
+
 v1.3.2
 -------
 - 重构：把所有 Metric chip 的悬浮窗收敛到 Metric.tsx 内统一管理，进入 hover/focus 时根据 chip 在视口里的实际位置自动选择"左锚右展"或"右锚左展"，并把宽度 clamp 到 `min(maxW, 视口可用空间) ↓ min(minW, 视口宽度 - 32px)` 的区间，彻底解决"chip 在 metrics 网格右侧时悬浮窗被裁掉"的问题——上下文峰值曲线、TPS 曲线、文件列表、工具/Skill 分布等全部受益，调用方只需通过 tooltipMinWidth / tooltipMaxWidth 表达诉求，不再需要为每种 tooltip 写专用 CSS。
