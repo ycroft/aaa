@@ -1,3 +1,7 @@
+v1.3.4
+-------
+- 修复：菜单栏"文件 → 退出"无效。原实现走的是 `window.close()`，按 HTML 规范这只能关掉由 JS（`window.open()`）打开的窗口，对 Tauri 的主窗口（由 Rust 侧创建）会被 WebView 静默忽略；即便能关窗，也只关一个窗口、不会退出 runtime/SSH 同步任务/HubClient 这些后台资源。改为通过 `@tauri-apps/plugin-process` 的 `exit(0)` 让 Rust 侧把所有窗口关掉、清理后台、再以 0 状态码终止整个进程。同时在 capabilities/default.json 加 `process:default` 权限，否则前端调用会被 Tauri 权限系统拦截报 Unauthorized。
+
 v1.3.3
 -------
 - 改动：菜单栏左侧的 "● AAA" logo 块去掉，节省横向空间，菜单本身从最左侧开始。

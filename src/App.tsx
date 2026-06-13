@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { exit as processExit } from "@tauri-apps/plugin-process";
 
 import { api } from "./api";
 import type {
@@ -483,7 +484,11 @@ function AppInner() {
           {
             label: t("menu.quit"),
             hint: t("menu.quit_hint"),
-            onClick: () => window.close(),
+            // window.close() is silently ignored by the WebView for windows
+            // that weren't opened by JS (the main Tauri window qualifies),
+            // so we go through plugin-process to ask Rust to tear down the
+            // app cleanly: close all windows, drop background tasks, exit 0.
+            onClick: () => { void processExit(0); },
           },
         ],
       },
