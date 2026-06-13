@@ -412,6 +412,18 @@ export const zh = {
       system: "系统",
       image_size: "{type} ({bytes}B)",
     },
+    diff: {
+      variant_edit: "Edit",
+      variant_write: "Write",
+      variant_multi: "MultiEdit",
+      variant_notebook: "NotebookEdit",
+      hunk_label: "片段 {i}/{n}",
+      replace_all: "全部替换",
+      toggle_to_raw: "原始 JSON",
+      toggle_to_diff: "Diff",
+      toggle_to_raw_hint: "显示原始工具调用 JSON",
+      toggle_to_diff_hint: "显示格式化的 diff 视图",
+    },
     kind: {
       user: "USER",
       assistant: "ASSIST",

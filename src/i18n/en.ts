@@ -414,6 +414,18 @@ export const en: Catalog = {
       system: "System",
       image_size: "{type} ({bytes}B)",
     },
+    diff: {
+      variant_edit: "Edit",
+      variant_write: "Write",
+      variant_multi: "MultiEdit",
+      variant_notebook: "NotebookEdit",
+      hunk_label: "Hunk {i}/{n}",
+      replace_all: "replace all",
+      toggle_to_raw: "Raw JSON",
+      toggle_to_diff: "Diff",
+      toggle_to_raw_hint: "Show the raw tool input JSON",
+      toggle_to_diff_hint: "Show the formatted diff view",
+    },
     kind: {
       user: "USER",
       assistant: "ASSIST",

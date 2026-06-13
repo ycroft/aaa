@@ -911,6 +911,138 @@ button { font-family: inherit; }
   color: var(--text-1);
 }
 
+/* ---- Inline diff view for file-edit tool calls ---- */
+.diff-toggle {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  font-family: var(--font-sans);
+  color: var(--text-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.diff-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+  border-color: var(--accent);
+}
+.part .label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.diff-view {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  overflow: hidden;
+  max-height: 540px;
+  display: flex;
+  flex-direction: column;
+}
+.diff-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-size: 11px;
+}
+.diff-variant {
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--tool);
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+.diff-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 12px;
+}
+.diff-stats {
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.diff-stat-add { color: var(--result); }
+.diff-stat-del { color: var(--error); }
+.diff-block {
+  border-top: 1px solid var(--border-1);
+  overflow-x: auto;
+}
+.diff-block:first-of-type { border-top: none; }
+.diff-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.diff-hunk-label { font-weight: 600; }
+.diff-tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+}
+.diff-pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  background: var(--bg-1);
+  color: var(--text-1);
+  overflow-x: auto;
+  max-height: 460px;
+}
+.diff-row {
+  display: flex;
+  white-space: pre;
+  padding: 0 8px;
+}
+.diff-row-add { background: rgba(136, 225, 163, 0.10); }
+.diff-row-del { background: rgba(255, 117, 117, 0.10); }
+.diff-row-ctx { color: var(--text-2); }
+.diff-gutter {
+  flex: 0 0 14px;
+  color: var(--text-3);
+  user-select: none;
+  font-weight: 600;
+}
+.diff-row-add .diff-gutter { color: var(--result); }
+.diff-row-del .diff-gutter { color: var(--error); }
+.diff-line {
+  flex: 1;
+  white-space: pre;
+}
+
+:root[data-theme="light"] .diff-row-add { background: rgba(26, 127, 55, 0.10); }
+:root[data-theme="light"] .diff-row-del { background: rgba(207, 34, 46, 0.10); }
+
+
 /* ---- Status bar ---- */
 .statusbar {
   display: flex;
@@ -1653,6 +1785,23 @@ button { font-family: inherit; }
 :root[data-theme="win98"] .part .text-body {
   font-family: var(--font-mono);
   color: var(--text-1);
+}
+:root[data-theme="win98"] .diff-view {
+  border-color: var(--bevel-dark);
+  background: #ffffff;
+}
+:root[data-theme="win98"] .diff-header,
+:root[data-theme="win98"] .diff-block-head {
+  background: #ece9d8;
+  border-color: var(--bevel-dark);
+  color: #000000;
+}
+:root[data-theme="win98"] .diff-row-add { background: #d4f0d4; }
+:root[data-theme="win98"] .diff-row-del { background: #f4d4d4; }
+:root[data-theme="win98"] .diff-toggle {
+  background: #ece9d8;
+  border-color: var(--bevel-dark);
+  color: #000000;
 }
 
 /* Status bar — classic taskbar feel with sunken cells */

@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useT } from "../../../i18n";
 import type { MessagePart, NodeKind } from "../../../types";
+import { detectFileEdit } from "./edit-detect";
+import { DiffView } from "./DiffView";
 
 export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
   const t = useT();
@@ -21,15 +24,7 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
         </div>
       );
     case "tool_use":
-      return (
-        <div className="part tool_use">
-          <div className="label">
-            {t("viewer.parts.tool_call")} <span className="name">{part.name}</span>
-            <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
-          </div>
-          <pre className="body">{part.input}</pre>
-        </div>
-      );
+      return <ToolUseView part={part} />;
     case "tool_result":
       return (
         <div className={`part tool_result${part.is_error ? " error" : ""}`}>
@@ -62,4 +57,37 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
         </div>
       );
   }
+}
+
+function ToolUseView({ part }: { part: Extract<MessagePart, { kind: "tool_use" }> }) {
+  const t = useT();
+  const fileEdit = detectFileEdit(part.name, part.input);
+  const [showRaw, setShowRaw] = useState(false);
+  const canDiff = fileEdit != null;
+  const renderDiff = canDiff && !showRaw;
+
+  return (
+    <div className="part tool_use">
+      <div className="label">
+        {t("viewer.parts.tool_call")} <span className="name">{part.name}</span>
+        <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
+        {canDiff && (
+          <button
+            type="button"
+            className="diff-toggle"
+            onClick={() => setShowRaw((v) => !v)}
+            title={renderDiff ? t("viewer.diff.toggle_to_raw_hint") : t("viewer.diff.toggle_to_diff_hint")}
+            aria-pressed={!renderDiff}
+          >
+            {renderDiff ? t("viewer.diff.toggle_to_raw") : t("viewer.diff.toggle_to_diff")}
+          </button>
+        )}
+      </div>
+      {renderDiff && fileEdit ? (
+        <DiffView data={fileEdit} />
+      ) : (
+        <pre className="body">{part.input}</pre>
+      )}
+    </div>
+  );
 }
