@@ -493,6 +493,7 @@ export function SessionViewer({
             <Metric
               label={t("viewer.metric.files_read")}
               value={String(agentStats.filesRead)}
+              tooltipMaxWidth={560}
               tooltip={
                 <FileListTooltip
                   paths={agentStats.filesReadList}
@@ -504,6 +505,7 @@ export function SessionViewer({
             <Metric
               label={t("viewer.metric.files_written")}
               value={String(agentStats.filesWritten)}
+              tooltipMaxWidth={560}
               tooltip={
                 <FileListTooltip
                   paths={agentStats.filesWrittenList}
@@ -515,6 +517,8 @@ export function SessionViewer({
             <Metric
               label={t("viewer.metric.peak_ctx")}
               value={formatTokens(aSummary.peak_context_tokens)}
+              tooltipMinWidth={500}
+              tooltipMaxWidth={520}
               tooltip={
                 <CtxCurveTooltip
                   nodes={activeAgent.nodes}
@@ -527,6 +531,8 @@ export function SessionViewer({
             <Metric
               label={t("viewer.metric.tps")}
               value={formatTps(activeAgentTps?.metrics.tps_mean ?? null)}
+              tooltipMinWidth={500}
+              tooltipMaxWidth={520}
               tooltip={
                 <div className="metric-tooltip-tps">
                   <TpsTooltip metrics={activeAgentTps?.metrics ?? null} />

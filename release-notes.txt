@@ -1,3 +1,8 @@
+v1.3.2
+-------
+- 重构：把所有 Metric chip 的悬浮窗收敛到 Metric.tsx 内统一管理，进入 hover/focus 时根据 chip 在视口里的实际位置自动选择"左锚右展"或"右锚左展"，并把宽度 clamp 到 `min(maxW, 视口可用空间) ↓ min(minW, 视口宽度 - 32px)` 的区间，彻底解决"chip 在 metrics 网格右侧时悬浮窗被裁掉"的问题——上下文峰值曲线、TPS 曲线、文件列表、工具/Skill 分布等全部受益，调用方只需通过 tooltipMinWidth / tooltipMaxWidth 表达诉求，不再需要为每种 tooltip 写专用 CSS。
+- 改动：移除 app.css 里 `:has(.metric-tooltip-files / -ctx / -tps)` 的 max-width 覆盖以及 TPS chip 专用的 `left: auto; right: 0` 反锚 hack；mount/unmount 改由 React state 驱动，CSS 不再用 `display: none` 切换；新增一个 4px 透明 ::before 桥接 chip 与悬浮窗之间的视觉间隙，避免光标穿越间隙时把悬浮窗弹掉，让用户可以正常选中悬浮窗里的文本和滚动文件列表。
+
 v1.3.1
 -------
 - 修复：Agent 级 TPS metric 的悬浮窗约 500px 宽，当 chip 处在 metrics 网格右侧时悬浮窗会有一截超出窗口右边缘看不到。改为将该悬浮窗锚定到 chip 的右边、向左展开，并加 max-width: min(520px, calc(100vw - 32px)) 的视口兜底，窄窗口下也能完整可见。

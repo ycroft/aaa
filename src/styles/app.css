@@ -477,13 +477,14 @@ button { font-family: inherit; }
   color: var(--text-3);
   pointer-events: none;
 }
+/* Width / anchor side / viewport clamping are set inline by Metric.tsx so a
+   single positioning policy applies to every tooltip variant, regardless of
+   where the chip sits in the metric grid. Mount/unmount is also driven by
+   React state — no `display: none` toggle here. */
 .main .session-head .metric .metric-tooltip {
   position: absolute;
-  left: 0;
   top: calc(100% + 4px);
   z-index: 40;
-  min-width: 180px;
-  max-width: 320px;
   padding: 6px 8px;
   background: var(--bg-1);
   border: 1px solid var(--border-1);
@@ -491,7 +492,6 @@ button { font-family: inherit; }
   box-shadow: var(--shadow);
   font-size: 11px;
   color: var(--text-1);
-  display: none;
   white-space: normal;
   /* Opt back into text selection — body has `user-select: none` globally so
      metric tooltip text would otherwise be unselectable. Cursor switches to
@@ -500,9 +500,17 @@ button { font-family: inherit; }
   -webkit-user-select: text;
   cursor: text;
 }
-.main .session-head .metric.has-tooltip:hover .metric-tooltip,
-.main .session-head .metric.has-tooltip:focus-within .metric-tooltip {
-  display: block;
+/* Invisible bridge that fills the 4px gap between the chip and the tooltip
+   so the cursor can move from chip to tooltip without exiting the metric's
+   pointer region (which would unmount the tooltip mid-flight and prevent
+   text selection / scrolling inside it). */
+.main .session-head .metric .metric-tooltip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -5px;
+  height: 5px;
 }
 .main .session-head .metric .metric-tooltip-table {
   border-collapse: collapse;
@@ -528,13 +536,10 @@ button { font-family: inherit; }
 }
 
 /* File-list tooltip variant — used by the agent-level "files read" / "files
-   written" metrics. Wider than the default tool-breakdown tooltip so longish
-   absolute paths fit, but capped so a single super-long path can't blow the
-   tooltip out. compactMiddlePath() in format.ts collapses middle segments
-   first; this is just the visual cap. */
-.main .session-head .metric .metric-tooltip:has(.metric-tooltip-files) {
-  max-width: 560px;
-}
+   written" metrics. Width is set inline by Metric.tsx; this just controls
+   the list layout. compactMiddlePath() in format.ts collapses middle
+   segments so very long absolute paths don't blow the tooltip out
+   horizontally. */
 .main .session-head .metric .metric-tooltip-files {
   list-style: none;
   margin: 0;
@@ -554,12 +559,8 @@ button { font-family: inherit; }
 }
 
 /* Context-curve tooltip — line chart showing per-node context % across the
-   active agent. Sized to the SVG it contains; min-width avoids the tooltip
-   collapsing when the body would otherwise be narrower than the chart. */
-.main .session-head .metric .metric-tooltip:has(.metric-tooltip-ctx) {
-  min-width: 500px;
-  max-width: 520px;
-}
+   active agent. Sized to the SVG it contains; width is set inline by
+   Metric.tsx. */
 .main .session-head .metric .metric-tooltip-ctx-caption {
   color: var(--text-3);
   font-size: 10px;
@@ -605,23 +606,12 @@ button { font-family: inherit; }
   opacity: 0.7;
 }
 /* TPS-curve container shares the ctx-curve sizing, but the agent-level
-   metric stacks the summary block on top of the chart, so the tooltip
-   needs a bit more vertical room. */
+   metric stacks the summary block on top of the chart. Width / anchor side
+   are set inline by Metric.tsx. */
 .main .session-head .metric .metric-tooltip-tps {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-/* The TPS chip is always the last metric in its grid, so it's typically
-   near the right edge of the panel. The default `left: 0` anchor would
-   push the ~500px-wide tooltip off-screen. Flip the anchor to the right
-   edge of the chip so the tooltip grows leftward instead. The viewport
-   clamp keeps it visible even when the panel itself is narrower than the
-   tooltip's preferred width. */
-.main .session-head .metric .metric-tooltip:has(.metric-tooltip-tps) {
-  left: auto;
-  right: 0;
-  max-width: min(520px, calc(100vw - 32px));
 }
 .main .session-head .metric .metric-tooltip-tps-summary {
   display: flex;

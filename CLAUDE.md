@@ -201,6 +201,8 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 
 工作流：涉及代码/功能改动时，先更新这 4 个版本字段 + `release-notes.txt`，再 `git add`，把版本号变更、release notes 变更和功能变更放进**同一个 commit**。如果忘了，就用 `git commit --amend` 补回去（前提是该提交还没推到远端）。纯文档改动跳过版本号步骤即可。
 
+> **每次完成修改都要 push 到远端。** 本仓库的"完成"包含 commit + `git push origin <branch>` 两步——只本地 commit 不推、或者推完忘了告知，都视为没完成。理由：分发产物（deb/rpm/AppImage/MSI/NSIS/portable）都基于远端 master 构建，本地未推的 commit 等同于没做过。原则上不要 force push 到 master；如果是修正未推 commit 的常规 amend，正常 push 即可。
+
 ## 构建与分发
 
 > Linux 与 Windows 都有对应脚本，下面的小节先讲 Linux，再讲 Windows。
