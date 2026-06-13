@@ -419,10 +419,31 @@ export const zh = {
       variant_notebook: "NotebookEdit",
       hunk_label: "片段 {i}/{n}",
       replace_all: "全部替换",
+    },
+    rich: {
       toggle_to_raw: "原始 JSON",
       toggle_to_diff: "Diff",
+      toggle_to_bash: "终端",
+      toggle_to_read: "文件",
+      toggle_to_todos: "任务",
       toggle_to_raw_hint: "显示原始工具调用 JSON",
-      toggle_to_diff_hint: "显示格式化的 diff 视图",
+      toggle_to_view_hint: "显示格式化视图",
+    },
+    bash: {
+      label: "Bash",
+      tag_background: "后台",
+      tag_timeout: "超时 {ms}ms",
+    },
+    read: {
+      label: "Read",
+      range: "{from}–{to} 行",
+      output_in_result: "（输出在下方 tool_result）",
+    },
+    todos: {
+      label: "Todos",
+      pending: "待办 {n}",
+      in_progress: "进行中 {n}",
+      completed: "已完成 {n}",
     },
     kind: {
       user: "USER",

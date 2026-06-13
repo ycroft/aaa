@@ -912,7 +912,7 @@ button { font-family: inherit; }
 }
 
 /* ---- Inline diff view for file-edit tool calls ---- */
-.diff-toggle {
+.rich-toggle {
   margin-left: auto;
   padding: 1px 8px;
   font-size: 10px;
@@ -926,7 +926,7 @@ button { font-family: inherit; }
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.diff-toggle:hover {
+.rich-toggle:hover {
   background: var(--bg-hover);
   color: var(--text-1);
   border-color: var(--accent);
@@ -1041,6 +1041,188 @@ button { font-family: inherit; }
 
 :root[data-theme="light"] .diff-row-add { background: rgba(26, 127, 55, 0.10); }
 :root[data-theme="light"] .diff-row-del { background: rgba(207, 34, 46, 0.10); }
+
+
+/* ---- Rich tool views (Bash / Read / Todos) ---- */
+.rich-view {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  overflow: hidden;
+  max-height: 540px;
+  display: flex;
+  flex-direction: column;
+}
+.rich-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+.rich-variant {
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--tool);
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+.rich-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 12px;
+}
+.rich-subtitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.rich-spacer { flex: 1; }
+.rich-tag {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+}
+.rich-pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-1);
+  overflow-x: auto;
+  max-height: 360px;
+  white-space: pre;
+}
+.rich-empty {
+  padding: 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Bash — terminal block */
+.bash-view .bash-cmd {
+  background: rgba(0, 0, 0, 0.55);
+  color: #d8e9d3;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border-1);
+}
+.bash-cmd-row {
+  display: flex;
+  gap: 8px;
+}
+.bash-prompt {
+  flex: 0 0 12px;
+  color: var(--accent);
+  user-select: none;
+  font-weight: 600;
+}
+.bash-line {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bash-view .bash-output {
+  background: var(--bg-1);
+  color: var(--text-1);
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+:root[data-theme="light"] .bash-view .bash-cmd {
+  background: #1c2333;
+  color: #d8e9d3;
+}
+
+/* Read — file viewer with line-number gutter */
+.read-view .read-numbered {
+  padding: 4px 0;
+  background: var(--bg-1);
+}
+.read-row {
+  display: flex;
+  white-space: pre;
+  padding: 0;
+}
+.read-row:hover {
+  background: var(--bg-2);
+}
+.read-gutter {
+  flex: 0 0 48px;
+  text-align: right;
+  padding: 0 10px 0 8px;
+  color: var(--text-3);
+  user-select: none;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border-1);
+}
+.read-line {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+/* Todos — checklist */
+.todos-list {
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  background: var(--bg-1);
+  overflow-y: auto;
+  max-height: 360px;
+}
+.todos-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.todos-marker {
+  flex: 0 0 16px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+  line-height: 1.4;
+}
+.todos-text {
+  flex: 1;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.todos-row-pending .todos-marker { color: var(--text-3); }
+.todos-row-pending .todos-text { color: var(--text-2); }
+.todos-row-in_progress .todos-marker { color: var(--warn); }
+.todos-row-in_progress .todos-text { font-weight: 600; }
+.todos-row-completed .todos-marker { color: var(--result); }
+.todos-row-completed .todos-text {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.todos-stat-pending { background: rgba(140, 150, 168, 0.18); color: var(--text-2); }
+.todos-stat-progress { background: rgba(255, 184, 107, 0.18); color: var(--warn); }
+.todos-stat-done { background: rgba(136, 225, 163, 0.18); color: var(--result); }
 
 
 /* ---- Status bar ---- */
@@ -1798,11 +1980,24 @@ button { font-family: inherit; }
 }
 :root[data-theme="win98"] .diff-row-add { background: #d4f0d4; }
 :root[data-theme="win98"] .diff-row-del { background: #f4d4d4; }
-:root[data-theme="win98"] .diff-toggle {
+:root[data-theme="win98"] .rich-toggle {
   background: #ece9d8;
   border-color: var(--bevel-dark);
   color: #000000;
 }
+:root[data-theme="win98"] .rich-view {
+  border-color: var(--bevel-dark);
+  background: #ffffff;
+}
+:root[data-theme="win98"] .rich-header {
+  background: #ece9d8;
+  border-color: var(--bevel-dark);
+  color: #000000;
+}
+:root[data-theme="win98"] .bash-cmd { background: #000000; color: #c8e6c9; }
+:root[data-theme="win98"] .bash-prompt { color: #ffd966; }
+:root[data-theme="win98"] .bash-output { background: #f4f4f4; color: #000000; }
+:root[data-theme="win98"] .read-gutter { background: #ece9d8; color: #555; }
 
 /* Status bar — classic taskbar feel with sunken cells */
 :root[data-theme="win98"] .statusbar .item {

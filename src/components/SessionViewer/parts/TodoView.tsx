@@ -1,0 +1,51 @@
+import { useMemo } from "react";
+import { useT } from "../../../i18n";
+import type { TodoList, TodoStatus } from "./rich-tools";
+
+const KNOWN: TodoStatus[] = ["pending", "in_progress", "completed"];
+
+function statusKey(raw: string): TodoStatus {
+  return (KNOWN as string[]).includes(raw) ? (raw as TodoStatus) : "pending";
+}
+
+const MARKER: Record<TodoStatus, string> = {
+  pending: "○",
+  in_progress: "▶",
+  completed: "✓",
+};
+
+export function TodoView({ data }: { data: TodoList }) {
+  const t = useT();
+  const counts = useMemo(() => {
+    const c = { pending: 0, in_progress: 0, completed: 0 };
+    for (const todo of data.todos) {
+      const k = statusKey(todo.status);
+      c[k] += 1;
+    }
+    return c;
+  }, [data]);
+
+  return (
+    <div className="rich-view todos-view">
+      <div className="rich-header">
+        <span className="rich-variant">{t("viewer.todos.label")}</span>
+        <span className="rich-spacer" />
+        <span className="rich-tag todos-stat-pending">{t("viewer.todos.pending", { n: counts.pending })}</span>
+        <span className="rich-tag todos-stat-progress">{t("viewer.todos.in_progress", { n: counts.in_progress })}</span>
+        <span className="rich-tag todos-stat-done">{t("viewer.todos.completed", { n: counts.completed })}</span>
+      </div>
+      <ul className="todos-list">
+        {data.todos.map((todo, i) => {
+          const s = statusKey(todo.status);
+          const text = s === "in_progress" && todo.activeForm ? todo.activeForm : todo.content;
+          return (
+            <li key={i} className={`todos-row todos-row-${s}`}>
+              <span className="todos-marker" aria-hidden="true">{MARKER[s]}</span>
+              <span className="todos-text">{text}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}

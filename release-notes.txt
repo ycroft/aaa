@@ -1,3 +1,7 @@
+v0.13.0
+-------
+- 工具调用富视图扩展到 Bash/Read/TodoWrite：Bash 渲染成终端块（$ 提示符 + 命令体 + 输出，opencode 内联输出直接显示），Read 渲染成"文件路径 + 行号侧栏 + 代码"，TodoWrite 渲染成 ☐/▶/✓ 三态 checklist 带数量统计；统一沿用上版的"Raw JSON 切换按钮"开关；i18n 调整：viewer.diff.toggle_* → viewer.rich.toggle_*
+
 v0.12.0
 -------
 - 时间线工具调用详细信息：claude-code（Edit/Write/MultiEdit/NotebookEdit）和 opencode（edit/write/multiedit）的文件修改默认按 diff 视图渲染（红删绿增 + 文件路径 + 增删行计数），单条 Edit 内的 old_string/new_string 用 LCS 行级比对；右上角加 Diff/Raw JSON 切换按钮，需要原始 input 时一键回退

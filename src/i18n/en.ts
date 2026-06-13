@@ -421,10 +421,31 @@ export const en: Catalog = {
       variant_notebook: "NotebookEdit",
       hunk_label: "Hunk {i}/{n}",
       replace_all: "replace all",
+    },
+    rich: {
       toggle_to_raw: "Raw JSON",
       toggle_to_diff: "Diff",
+      toggle_to_bash: "Terminal",
+      toggle_to_read: "File",
+      toggle_to_todos: "Todos",
       toggle_to_raw_hint: "Show the raw tool input JSON",
-      toggle_to_diff_hint: "Show the formatted diff view",
+      toggle_to_view_hint: "Show the formatted view",
+    },
+    bash: {
+      label: "Bash",
+      tag_background: "background",
+      tag_timeout: "timeout {ms}ms",
+    },
+    read: {
+      label: "Read",
+      range: "lines {from}–{to}",
+      output_in_result: "(output in tool_result below)",
+    },
+    todos: {
+      label: "Todos",
+      pending: "{n} pending",
+      in_progress: "{n} in progress",
+      completed: "{n} done",
     },
     kind: {
       user: "USER",

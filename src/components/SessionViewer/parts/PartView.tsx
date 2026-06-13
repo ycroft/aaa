@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { useT } from "../../../i18n";
+import { useT, type TKey } from "../../../i18n";
 import type { MessagePart, NodeKind } from "../../../types";
-import { detectFileEdit } from "./edit-detect";
+import { detectRichTool, type RichTool } from "./rich-tools";
 import { DiffView } from "./DiffView";
+import { BashView } from "./BashView";
+import { ReadView } from "./ReadView";
+import { TodoView } from "./TodoView";
 
 export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
   const t = useT();
@@ -59,35 +62,50 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
   }
 }
 
+const RICH_TOGGLE_KEY: Record<RichTool["kind"], TKey> = {
+  edit: "viewer.rich.toggle_to_diff",
+  bash: "viewer.rich.toggle_to_bash",
+  read: "viewer.rich.toggle_to_read",
+  todos: "viewer.rich.toggle_to_todos",
+};
+
+function renderRich(rich: RichTool) {
+  switch (rich.kind) {
+    case "edit":
+      return <DiffView data={rich.data} />;
+    case "bash":
+      return <BashView data={rich.data} />;
+    case "read":
+      return <ReadView data={rich.data} />;
+    case "todos":
+      return <TodoView data={rich.data} />;
+  }
+}
+
 function ToolUseView({ part }: { part: Extract<MessagePart, { kind: "tool_use" }> }) {
   const t = useT();
-  const fileEdit = detectFileEdit(part.name, part.input);
+  const rich = detectRichTool(part.name, part.input);
   const [showRaw, setShowRaw] = useState(false);
-  const canDiff = fileEdit != null;
-  const renderDiff = canDiff && !showRaw;
+  const showRich = rich != null && !showRaw;
 
   return (
     <div className="part tool_use">
       <div className="label">
         {t("viewer.parts.tool_call")} <span className="name">{part.name}</span>
         <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
-        {canDiff && (
+        {rich && (
           <button
             type="button"
-            className="diff-toggle"
+            className="rich-toggle"
             onClick={() => setShowRaw((v) => !v)}
-            title={renderDiff ? t("viewer.diff.toggle_to_raw_hint") : t("viewer.diff.toggle_to_diff_hint")}
-            aria-pressed={!renderDiff}
+            title={showRich ? t("viewer.rich.toggle_to_raw_hint") : t("viewer.rich.toggle_to_view_hint")}
+            aria-pressed={!showRich}
           >
-            {renderDiff ? t("viewer.diff.toggle_to_raw") : t("viewer.diff.toggle_to_diff")}
+            {showRich ? t("viewer.rich.toggle_to_raw") : t(RICH_TOGGLE_KEY[rich.kind])}
           </button>
         )}
       </div>
-      {renderDiff && fileEdit ? (
-        <DiffView data={fileEdit} />
-      ) : (
-        <pre className="body">{part.input}</pre>
-      )}
+      {showRich && rich ? renderRich(rich) : <pre className="body">{part.input}</pre>}
     </div>
   );
 }
