@@ -658,6 +658,25 @@ button { font-family: inherit; }
   background: rgba(220, 70, 70, 0.22);
   border-color: rgba(220, 70, 70, 0.7);
 }
+/* In-timeline match highlight. Yellow on dark, soft amber on light, classic
+   yellow-on-black on win98. Inline so it survives inside <pre>/<mark> blocks. */
+mark.search-hit {
+  background: rgba(255, 209, 102, 0.55);
+  color: inherit;
+  padding: 0 1px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 209, 102, 0.55);
+}
+:root[data-theme="light"] mark.search-hit {
+  background: rgba(255, 184, 0, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 184, 0, 0.55);
+}
+:root[data-theme="win98"] mark.search-hit {
+  background: #ffff00;
+  color: #000000;
+  box-shadow: none;
+  border-radius: 0;
+}
 /* Search button shares its row with the input. Inherits height from the
    default .th-nav-btn rule above (22px), so no override needed here. */
 .timeline-header .th-msg-search .th-nav-btn {

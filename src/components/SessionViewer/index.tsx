@@ -27,6 +27,7 @@ import { PartView } from "./parts/PartView";
 import { ToolChips } from "./parts/ToolChips";
 import { ToolFilterDropdown } from "./parts/ToolFilterDropdown";
 import { ToolBreakdownTooltip, SkillBreakdownTooltip } from "./parts/Tooltips";
+import { SearchHighlightProvider } from "./parts/Highlight";
 
 interface Props {
   session: SessionDetail | null;
@@ -493,6 +494,7 @@ export function SessionViewer({
           </div>
         </div>
         <div className="timeline-body" ref={bodyRef}>
+        <SearchHighlightProvider needle={search.activeHighlight}>
         {visibleNodes.map((n) => {
           const expanded = overrides[n.id] ?? expandAll;
           const viz = vizById.get(n.id);
@@ -562,6 +564,7 @@ export function SessionViewer({
             </div>
           );
         })}
+        </SearchHighlightProvider>
         </div>
       </div>
     </div>

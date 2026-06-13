@@ -6,6 +6,7 @@ import { DiffView } from "./DiffView";
 import { BashView } from "./BashView";
 import { ReadView } from "./ReadView";
 import { TodoView } from "./TodoView";
+import { Highlight } from "./Highlight";
 
 export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) {
   const t = useT();
@@ -15,7 +16,7 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
       return (
         <div className={cls}>
           <div className="label">{kind === "assistant" ? t("viewer.parts.assistant") : t("viewer.parts.text")}</div>
-          <div className="text-body">{part.text}</div>
+          <div className="text-body"><Highlight text={part.text} /></div>
         </div>
       );
     }
@@ -23,7 +24,7 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
       return (
         <div className="part thinking">
           <div className="label">{t("viewer.parts.thinking")}</div>
-          <div className="text-body">{part.text}</div>
+          <div className="text-body"><Highlight text={part.text} /></div>
         </div>
       );
     case "tool_use":
@@ -35,7 +36,7 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
             {t("viewer.parts.tool_result")} {part.is_error && <span style={{ color: "var(--error)" }}>{t("viewer.parts.tool_error")}</span>}
             <span className="tag" style={{ marginLeft: 8 }}>{part.tool_use_id.slice(0, 12)}</span>
           </div>
-          <pre className="body">{part.content}</pre>
+          <pre className="body"><Highlight text={part.content} /></pre>
         </div>
       );
     case "image":
@@ -49,14 +50,14 @@ export function PartView({ part, kind }: { part: MessagePart; kind: NodeKind }) 
       return (
         <div className="part note">
           <div className="label">{t("viewer.parts.attachment")}</div>
-          <div className="text-body">{part.path}{part.mime ? ` · ${part.mime}` : ""}</div>
+          <div className="text-body"><Highlight text={`${part.path}${part.mime ? ` · ${part.mime}` : ""}`} /></div>
         </div>
       );
     case "note":
       return (
         <div className="part note">
           <div className="label">{t("viewer.parts.system")}</div>
-          <div className="text-body">{part.text}</div>
+          <div className="text-body"><Highlight text={part.text} /></div>
         </div>
       );
   }
@@ -105,7 +106,7 @@ function ToolUseView({ part }: { part: Extract<MessagePart, { kind: "tool_use" }
           </button>
         )}
       </div>
-      {showRich && rich ? renderRich(rich) : <pre className="body">{part.input}</pre>}
+      {showRich && rich ? renderRich(rich) : <pre className="body"><Highlight text={part.input} /></pre>}
     </div>
   );
 }

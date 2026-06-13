@@ -1,5 +1,6 @@
 import { useT } from "../../../i18n";
 import type { BashCall } from "./rich-tools";
+import { Highlight } from "./Highlight";
 
 export function BashView({ data }: { data: BashCall }) {
   const t = useT();
@@ -13,7 +14,9 @@ export function BashView({ data }: { data: BashCall }) {
       <div className="rich-header">
         <span className="rich-variant">{t("viewer.bash.label")}</span>
         {data.description && (
-          <span className="rich-subtitle" title={data.description}>{data.description}</span>
+          <span className="rich-subtitle" title={data.description}>
+            <Highlight text={data.description} />
+          </span>
         )}
         <span className="rich-spacer" />
         {tags.map((tag) => (
@@ -24,12 +27,12 @@ export function BashView({ data }: { data: BashCall }) {
         {cmdLines.map((line, i) => (
           <div key={i} className="bash-cmd-row">
             <span className="bash-prompt">{i === 0 ? "$" : ">"}</span>
-            <span className="bash-line">{line || " "}</span>
+            <span className="bash-line">{line ? <Highlight text={line} /> : " "}</span>
           </div>
         ))}
       </pre>
       {data.output && data.output.trim() !== "" && (
-        <pre className="rich-pre bash-output">{data.output}</pre>
+        <pre className="rich-pre bash-output"><Highlight text={data.output} /></pre>
       )}
     </div>
   );

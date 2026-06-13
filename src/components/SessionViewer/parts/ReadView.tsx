@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT } from "../../../i18n";
 import type { ReadCall } from "./rich-tools";
+import { Highlight } from "./Highlight";
 
 // claude-code's Read tool returns each line prefixed with "    NN\t" (cat -n style).
 // We split that into a (lineNo, code) tuple per row so the renderer can show a
@@ -40,7 +41,9 @@ export function ReadView({ data }: { data: ReadCall }) {
     <div className="rich-view read-view">
       <div className="rich-header">
         <span className="rich-variant">{t("viewer.read.label")}</span>
-        <span className="rich-path mono" title={data.filePath}>{data.filePath}</span>
+        <span className="rich-path mono" title={data.filePath}>
+          <Highlight text={data.filePath} />
+        </span>
         {range && <span className="rich-tag">{range}</span>}
       </div>
       {data.output ? (
@@ -49,12 +52,12 @@ export function ReadView({ data }: { data: ReadCall }) {
             {rows.map((r, i) => (
               <div key={i} className="read-row">
                 <span className="read-gutter">{r.no ?? ""}</span>
-                <span className="read-line">{r.text || " "}</span>
+                <span className="read-line">{r.text ? <Highlight text={r.text} /> : " "}</span>
               </div>
             ))}
           </pre>
         ) : (
-          <pre className="rich-pre">{data.output}</pre>
+          <pre className="rich-pre"><Highlight text={data.output} /></pre>
         )
       ) : (
         <div className="rich-empty">{t("viewer.read.output_in_result")}</div>

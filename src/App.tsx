@@ -387,15 +387,26 @@ function AppInner() {
         e.preventDefault();
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F") && !inEditable) {
-        // Ctrl+Alt+F → focus the session-list filter (the outer search box).
-        // Ctrl+F (no Alt) → focus the in-session message search.
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        // Always preventDefault to suppress Edge WebView's native "find on page"
+        // popup — that bar competes with our own search input and indexes the
+        // raw rendered DOM (collapsed nodes, ARIA text…) which gives a different
+        // result set than nodeHaystack(). When the user is already typing in an
+        // input we leave focus alone; otherwise route to the right search box.
+        e.preventDefault();
+        if (inEditable) return;
         const selector = e.altKey
           ? "input.search"
           : "input.th-search-input";
         const el = document.querySelector<HTMLInputElement>(selector);
         el?.focus();
         el?.select();
+        return;
+      }
+      // Ctrl+G is the WebView's "find next" companion — block it for the same
+      // reason as Ctrl+F. Our cycle-to-next behaviour is on Enter inside the
+      // session search input.
+      if ((e.ctrlKey || e.metaKey) && (e.key === "g" || e.key === "G")) {
         e.preventDefault();
         return;
       }

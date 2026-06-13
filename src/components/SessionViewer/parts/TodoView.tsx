@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT } from "../../../i18n";
 import type { TodoList, TodoStatus } from "./rich-tools";
+import { Highlight } from "./Highlight";
 
 const KNOWN: TodoStatus[] = ["pending", "in_progress", "completed"];
 
@@ -41,7 +42,7 @@ export function TodoView({ data }: { data: TodoList }) {
           return (
             <li key={i} className={`todos-row todos-row-${s}`}>
               <span className="todos-marker" aria-hidden="true">{MARKER[s]}</span>
-              <span className="todos-text">{text}</span>
+              <span className="todos-text"><Highlight text={text} /></span>
             </li>
           );
         })}

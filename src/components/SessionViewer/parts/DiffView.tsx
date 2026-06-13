@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT, type TKey } from "../../../i18n";
 import type { NormalizedEdit, NormalizedFileEdit } from "./edit-detect";
+import { Highlight } from "./Highlight";
 
 // --- LCS line diff (small inputs only — bail to plain replace for very large blocks). ---
 
@@ -92,7 +93,7 @@ function EditBlock({ edit, index, total }: { edit: NormalizedEdit; index: number
             <span className="diff-gutter">
               {r.tag === "add" ? "+" : r.tag === "del" ? "-" : " "}
             </span>
-            <span className="diff-line">{r.line || " "}</span>
+            <span className="diff-line">{r.line ? <Highlight text={r.line} /> : " "}</span>
           </div>
         ))}
       </pre>

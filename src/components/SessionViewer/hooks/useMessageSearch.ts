@@ -49,18 +49,24 @@ export function useMessageSearch(
 ) {
   const [messageSearch, setMessageSearch] = useState("");
   const [searchMissed, setSearchMissed] = useState(false);
+  // The needle that's actively driving in-timeline highlights. Set after a
+  // successful run() and cleared on reset / empty input. Lower-cased so the
+  // <Highlight> component can do raw indexOf without re-normalising.
+  const [activeHighlight, setActiveHighlight] = useState("");
   const lastSearchHitRef = useRef<{ term: string; nodeId: string } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const reset = useCallback(() => {
     setMessageSearch("");
     setSearchMissed(false);
+    setActiveHighlight("");
     lastSearchHitRef.current = null;
   }, []);
 
   const onChange = useCallback((value: string) => {
     setMessageSearch(value);
     setSearchMissed((prev) => (prev ? false : prev));
+    if (value.trim() === "") setActiveHighlight("");
   }, []);
 
   const run = useCallback(() => {
@@ -85,10 +91,12 @@ export function useMessageSearch(
     }
     if (foundIdx < 0) {
       setSearchMissed(true);
+      setActiveHighlight("");
       lastSearchHitRef.current = null;
       return;
     }
     setSearchMissed(false);
+    setActiveHighlight(needle);
     const target = visibleNodes[foundIdx];
     lastSearchHitRef.current = { term: needle, nodeId: target.id };
     forceExpand(target.id);
@@ -106,6 +114,7 @@ export function useMessageSearch(
   return {
     messageSearch,
     searchMissed,
+    activeHighlight,
     inputRef,
     onChange,
     run,
