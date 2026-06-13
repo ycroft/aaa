@@ -1,3 +1,7 @@
+v0.11.3
+-------
+- 修复：opencode provider 在 Windows 上的默认目录修正为 %USERPROFILE%\.local\share\opencode（上一版改成的 .config\opencode 也错了）
+
 v0.11.2
 -------
 - UI：会话查看器时间线表头控件高度统一到 22px，工具下拉框不再比搜索框/放大镜高一截
