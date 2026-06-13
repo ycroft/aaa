@@ -36,7 +36,18 @@ impl SessionProvider for OpencodeProvider {
         "opencode"
     }
     fn default_root(&self) -> Option<PathBuf> {
-        dirs::data_local_dir().map(|d| d.join("opencode"))
+        // Windows: opencode stores under %USERPROFILE%\.config\opencode (not
+        // %LOCALAPPDATA%\opencode that dirs::data_local_dir() would suggest).
+        // Linux: ~/.local/share/opencode (XDG data).
+        // macOS: ~/Library/Application Support/opencode.
+        #[cfg(target_os = "windows")]
+        {
+            return dirs::home_dir().map(|d| d.join(".config").join("opencode"));
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            dirs::data_local_dir().map(|d| d.join("opencode"))
+        }
     }
     fn remote_root_candidates(&self) -> Vec<&'static str> {
         vec![

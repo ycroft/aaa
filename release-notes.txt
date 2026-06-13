@@ -1,3 +1,9 @@
+v0.11.2
+-------
+- UI：会话查看器时间线表头控件高度统一到 22px，工具下拉框不再比搜索框/放大镜高一截
+- 修复：opencode provider 在 Windows 上的默认目录改为 %USERPROFILE%\.config\opencode（之前误用 %LOCALAPPDATA%\opencode）
+- 修复：AI 辅助分析 preset 列表里 nga 命令名错写成 opencode，改回独立命令名 nga；已有用户 settings.json 在加载时自动迁移（仅当字段还是旧默认值才升级，用户改过则保留）
+
 v0.11.1
 -------
 - 重构：拆分会话查看器（SessionViewer）单文件 1489 行的混合实现

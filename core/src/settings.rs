@@ -92,8 +92,8 @@ impl Default for AiSettings {
                 },
                 AgentConfig {
                     id: "nga".into(),
-                    name: "NGA (opencode)".into(),
-                    cmd_template: "opencode".into(),
+                    name: "nga".into(),
+                    cmd_template: "nga".into(),
                     is_preset: true,
                 },
             ],
@@ -160,7 +160,9 @@ pub fn load() -> Result<AppSettings> {
     let raw = fs::read_to_string(&p).context("read settings.json")?;
     match serde_json::from_str::<AppSettings>(&raw) {
         Ok(mut parsed) => {
-            if ensure_device_id(&mut parsed) {
+            let dev_id_changed = ensure_device_id(&mut parsed);
+            let presets_changed = upgrade_preset_agents(&mut parsed);
+            if dev_id_changed || presets_changed {
                 let _ = save(&parsed);
             }
             Ok(parsed)
@@ -172,6 +174,29 @@ pub fn load() -> Result<AppSettings> {
             Ok(s)
         }
     }
+}
+
+/// One-shot migration for preset agents whose stored values were wrong in an
+/// earlier version. Only rewrites a field when its stored value matches the
+/// known-bad default — anything the user customised stays untouched.
+/// Returns true if any field changed (caller persists).
+fn upgrade_preset_agents(s: &mut AppSettings) -> bool {
+    let mut changed = false;
+    for a in s.ai.agents.iter_mut().filter(|a| a.is_preset) {
+        if a.id == "nga" {
+            // <=0.11.1 shipped nga with cmd_template "opencode" and name
+            // "NGA (opencode)". The actual binary is `nga`.
+            if a.cmd_template == "opencode" {
+                a.cmd_template = "nga".into();
+                changed = true;
+            }
+            if a.name == "NGA (opencode)" {
+                a.name = "nga".into();
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
 /// Returns true if a new id was generated (caller may want to persist).

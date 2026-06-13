@@ -606,10 +606,13 @@ button { font-family: inherit; }
   margin-left: 6px;
 }
 .timeline-header .th-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1;
-  padding: 3px 7px;
+  padding: 0 7px;
   border: 1px solid var(--border-2);
   border-radius: 4px;
   background: var(--bg-2);
@@ -655,13 +658,9 @@ button { font-family: inherit; }
   background: rgba(220, 70, 70, 0.22);
   border-color: rgba(220, 70, 70, 0.7);
 }
-/* Search button shares its row with the input, so match the input's
-   explicit 22px height — th-nav-btn's padding-based sizing renders ~19px,
-   which leaves a 3px misalignment with the input. */
+/* Search button shares its row with the input. Inherits height from the
+   default .th-nav-btn rule above (22px), so no override needed here. */
 .timeline-header .th-msg-search .th-nav-btn {
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
   padding: 0 7px;
 }
 
@@ -1244,12 +1243,14 @@ button { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  height: 22px;
+  padding: 0 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-2);
   background: var(--bg-2);
   color: var(--text-2);
   font-size: 11px;
+  line-height: 1;
   cursor: pointer;
 }
 .tool-filter-trigger.active {
