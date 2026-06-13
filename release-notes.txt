@@ -1,3 +1,20 @@
+v1.0.0
+-------
+里程碑版本：AAA 自 0.1 起逐步成形，到 1.0 已具备完整的"读日志 → 看 → 反馈"闭环；记录此处作为对外正式发布起点。
+
+主要能力盘点：
+- 多后端 provider：claude-code（JSONL，含 Task/aside/compact 子代理）+ opencode（SQLite session/message/part）
+- 统一数据模型：SessionSummary/SessionNode/MessagePart/TokenUsage/SubAgentSession，前端从不接触原生格式
+- 时间线视图：可折叠节点 + ctx 走势 + 峰值标红 + 跳跃标橙 + tool chip + tool filter + 消息搜索 + USER 跳转
+- 工具调用富视图：Edit/Write/MultiEdit/NotebookEdit 走 LCS 行级 diff；Bash 走终端块；Read 走文件 + 行号侧栏；TodoWrite 走 ☐/▶/✓ checklist；统一 Raw JSON 切换按钮兜底
+- 远程同步子系统：SSH（russh）+ SFTP 增量镜像，TOFU host-key，按 provider 选择性同步（opencode 只拉 db 文件），事件流式进度
+- aaa-hub 服务端：独立 Axum + SQLite 服务，支持 feedback 提交/查询、版本清单/产物分发、admin 后台、SMTP 通知、限流
+- 反馈与更新：客户端 fail-silent 上报，本地 ticket 留存；@tauri-apps/plugin-updater 集成 + UpdateBanner
+- AI 辅助分析：可选启动外部 agent（claude / opencode / nga / 自定义命令）解读会话
+- i18n：zh/en 完整 catalog，设置里手动切换或跟随系统语言
+- 主题：dark / light / win98 三套
+- 分发：Linux（deb / rpm / AppImage / portable tarball）+ Windows（MSI / NSIS / portable zip），打包工具链全部 vendor 离线可用
+
 v0.13.0
 -------
 - 工具调用富视图扩展到 Bash/Read/TodoWrite：Bash 渲染成终端块（$ 提示符 + 命令体 + 输出，opencode 内联输出直接显示），Read 渲染成"文件路径 + 行号侧栏 + 代码"，TodoWrite 渲染成 ☐/▶/✓ 三态 checklist 带数量统计；统一沿用上版的"Raw JSON 切换按钮"开关；i18n 调整：viewer.diff.toggle_* → viewer.rich.toggle_*
