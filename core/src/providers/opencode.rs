@@ -377,7 +377,7 @@ fn summarise_session(conn: &Connection, db: &Path, row: &SessionRow) -> Result<S
         };
         msg_count += 1;
         if v.get("role").and_then(Value::as_str) == Some("assistant") {
-            if let Some(usage) = parse_tokens(v.get("tokens")) {
+            if let Some(usage) = parse_tokens_with_duration(&v) {
                 total_input += usage.input_tokens;
                 total_output += usage.output_tokens;
                 let ctx = usage.context_window();
@@ -436,11 +436,16 @@ fn load_session_detail(conn: &Connection, db: &Path, sid: &str) -> Result<Sessio
         Vec::new()
     });
 
-    Ok(SessionDetail {
+    let mut detail = SessionDetail {
         summary,
         nodes,
         subagents,
-    })
+        tps_session: None,
+        tps_per_agent: std::collections::HashMap::new(),
+    };
+    detail.tps_session = crate::tps::compute_session_tps(&detail);
+    detail.tps_per_agent = crate::tps::compute_per_agent_tps(&detail);
+    Ok(detail)
 }
 
 fn fetch_session_row(conn: &Connection, sid: &str) -> Result<SessionRow> {
@@ -494,7 +499,7 @@ fn build_summary_and_nodes(
         let parts_size: u64 = parts.iter().map(|p| p.raw_size).sum();
         let kind = node_kind_for(role, &parts);
 
-        let usage = parse_tokens(mv.get("tokens"));
+        let usage = parse_tokens_with_duration(&mv);
         if let Some(u) = &usage {
             if role == "assistant" {
                 total_input += u.input_tokens;
@@ -860,6 +865,7 @@ fn parse_tokens(v: Option<&Value>) -> Option<TokenUsage> {
     let v = v?;
     let input = v.get("input").and_then(Value::as_u64).unwrap_or(0);
     let output = v.get("output").and_then(Value::as_u64).unwrap_or(0);
+    let reasoning = v.get("reasoning").and_then(Value::as_u64).unwrap_or(0);
     let cache_read = v
         .get("cache")
         .and_then(|c| c.get("read"))
@@ -870,16 +876,48 @@ fn parse_tokens(v: Option<&Value>) -> Option<TokenUsage> {
         .and_then(|c| c.get("write"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
-    if input == 0 && output == 0 && cache_read == 0 && cache_write == 0 {
+    if input == 0 && output == 0 && reasoning == 0 && cache_read == 0 && cache_write == 0 {
         return None;
     }
     Some(TokenUsage {
         input_tokens: input,
-        output_tokens: output,
+        // Roll reasoning tokens into output. opencode bills them separately
+        // but for TPS purposes the model spent the same generation time on
+        // them — leaving them out would systematically halve the TPS for
+        // thinking-mode runs.
+        output_tokens: output + reasoning,
         cache_creation_input_tokens: cache_write,
         cache_read_input_tokens: cache_read,
         service_tier: None,
+        generation_duration_ms: None,
     })
+}
+
+/// Read the `tokens` block, plus turn `time.completed - time.created` into
+/// `generation_duration_ms`. The opencode `message.data` blob carries both,
+/// so we look at it as a whole instead of just the `tokens` sub-tree.
+///
+/// Caveat: `time.completed - time.created` is the lifecycle of the *whole*
+/// assistant message, including any tool execution that ran inside it. So
+/// the resulting TPS is "turn throughput", biased low vs the model's pure
+/// streaming rate. Same direction as the claude-code estimate, which keeps
+/// within-session relative comparisons consistent.
+fn parse_tokens_with_duration(message_data: &Value) -> Option<TokenUsage> {
+    let mut usage = parse_tokens(message_data.get("tokens"))?;
+    let started = message_data
+        .get("time")
+        .and_then(|t| t.get("created"))
+        .and_then(Value::as_i64);
+    let ended = message_data
+        .get("time")
+        .and_then(|t| t.get("completed"))
+        .and_then(Value::as_i64);
+    if let (Some(a), Some(b)) = (started, ended) {
+        if b > a {
+            usage.generation_duration_ms = Some((b - a) as u64);
+        }
+    }
+    Some(usage)
 }
 
 fn node_kind_for(role: &str, parts: &[PartWithSize]) -> NodeKind {

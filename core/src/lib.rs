@@ -7,3 +7,4 @@ pub mod providers;
 pub mod remote;
 pub mod settings;
 pub mod stats;
+pub mod tps;

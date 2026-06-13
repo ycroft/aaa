@@ -266,6 +266,8 @@ mod tests {
             summary: empty_summary("opencode"),
             nodes: vec![skill_node("n1", None, "t1", "prd")],
             subagents: vec![],
+            tps_session: None,
+            tps_per_agent: std::collections::HashMap::new(),
         };
         assert!(skill_usage(&detail).is_empty());
     }
@@ -282,6 +284,8 @@ mod tests {
                 skill_node("n3", Some("2026-05-14T10:30:00Z"), "t3", "prd"),
             ],
             subagents: vec![],
+            tps_session: None,
+            tps_per_agent: std::collections::HashMap::new(),
         };
         let rows = skill_usage(&detail);
         assert_eq!(rows.len(), 2);
@@ -303,6 +307,8 @@ mod tests {
             summary: empty_summary("claude-code"),
             nodes: vec![skill_node("n1", None, "t1", "prd")],
             subagents: vec![],
+            tps_session: None,
+            tps_per_agent: std::collections::HashMap::new(),
         };
         detail.subagents.push(SubAgentSession {
             agent_id: "a1".into(),
@@ -331,6 +337,8 @@ mod tests {
             summary: empty_summary("claude-code"),
             nodes: vec![node],
             subagents: vec![],
+            tps_session: None,
+            tps_per_agent: std::collections::HashMap::new(),
         };
         assert!(skill_usage(&detail).is_empty());
     }

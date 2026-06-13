@@ -1,3 +1,26 @@
+v1.3.1
+-------
+- 修复：Agent 级 TPS metric 的悬浮窗约 500px 宽，当 chip 处在 metrics 网格右侧时悬浮窗会有一截超出窗口右边缘看不到。改为将该悬浮窗锚定到 chip 的右边、向左展开，并加 max-width: min(520px, calc(100vw - 32px)) 的视口兜底，窄窗口下也能完整可见。
+
+v1.3.0
+-------
+- 新增：会话总览和 Agent metrics 都新增 "TPS（均值）" chip。TPS 来自每条 assistant turn 的 output_tokens / generation_duration_ms：claude-code 用 "上一事件 → 本 turn 末"夹住时间窗，opencode 用 message.time.completed - time.created；opencode 还把 reasoning tokens 计入 output 避免 thinking 模型 TPS 减半。两端的口径都偏低（含 TTFT / 工具间隙），所以悬浮窗里附带 caveat 提示仅适合本会话内相对比较。
+- 新增：Agent 级 TPS 悬浮窗自带 SVG 折线图，纵轴根据观测最大值自动取 1/2/5×10^k 的 nice 上限，峰值点高亮；qualifier 过滤掉 < 50 token 或 < 1 s 的小 turn；遇到不合格节点用前一个有效值前向填充并把那段连线画成虚线 + 灰色，避免 TPS 在节点间跳变到 0。
+- 改动：core 数据模型 TokenUsage 新增 generation_duration_ms 字段，SessionDetail 新增 tps_session 与 tps_per_agent。新增 core/src/tps.rs 实现 compute_session_tps / compute_per_agent_tps，前端通过 src/types.ts 镜像；老的缓存数据通过 #[serde(default)] 兼容。
+
+v1.2.1
+-------
+- 增强：会话内搜索命中后，放大镜旁边新增 ‹ / › 翻页按钮和 "n/total" 计数器；点击按钮在所有命中节点之间循环前后跳转，每跳一格都会自动展开目标节点并平滑滚动到位；只有一条命中或没有命中时计数器和按钮自动隐藏，过滤器变化导致命中集合收缩时游标位置会被 clamp 到合法范围。
+
+v1.2.0
+-------
+- 新增：Agent 级别"上下文峰值" metric 加上悬浮窗，展示一条 SVG 折线图——横轴是节点序号 (0, 1, 2, …)，纵轴是上下文占用 %；占用计算复用时间线的 NodeViz.ratio（按 model 查表，未命中模型回退到本会话峰值），峰值点用红色加粗标出，节点 ≤30 时给每个数据点画一个小圆点。
+- 修复：metric 悬浮窗里的文本因为 body 全局 user-select:none 一直无法选中，现在统一在 .metric-tooltip 上 opt back into text + cursor，工具调用 / Skill / 文件列表 / 上下文曲线四个 tooltip 的内容都能选中拷贝。
+
+v1.1.0
+-------
+- 新增：Agent 级别 metrics 中"读取文件数"和"写入文件数"加上悬浮窗，鼠标悬停展示该 agent 实际触达的文件路径列表（按首次触发时间为序去重）；过长的绝对路径采用中段省略，文件名和最后一级目录始终完整保留，tooltip 自身也设了 max-width 上限避免一条超长路径把 tooltip 撑出屏幕。
+
 v1.0.2
 -------
 - 修复一个长期存在的 CSS 命名冲突 bug：外层布局容器和 part 内 <pre> 都用了 className="body"，全局 .body { display:grid; grid-template-columns:360px 1fr } 会顺着 cascade 应用到 <pre> 上——表现为 tool_use input / tool_result content 在右边像被空气墙挡住，每行约 40 字符就强制换行；上一版加完搜索高亮后，<pre> 的子节点从 1 个文字节点变成 [文本片段, <mark>, ...] 多个，全部变成 grid item 后 <mark> 跑到第二列，造成"匹配字符消失原位置 + 右半边整片黄色"。把外层容器的类名从 .body 改成 .app-body 解开冲突，两个症状一并修好。

@@ -85,11 +85,16 @@ impl SessionProvider for ClaudeCodeProvider {
             Vec::new()
         });
 
-        Ok(SessionDetail {
+        let mut detail = SessionDetail {
             summary,
             nodes,
             subagents,
-        })
+            tps_session: None,
+            tps_per_agent: std::collections::HashMap::new(),
+        };
+        detail.tps_session = crate::tps::compute_session_tps(&detail);
+        detail.tps_per_agent = crate::tps::compute_per_agent_tps(&detail);
+        Ok(detail)
     }
 }
 
@@ -121,6 +126,26 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
     let mut nodes: Vec<SessionNode> = Vec::new();
     let mut peak_context: u64 = 0;
     let mut last_branch: Option<String> = None;
+
+    // For TPS we want a "duration" per assistant turn. claude-code persists
+    // each content block of a turn as its own JSONL record (sharing the same
+    // `message.id` and the *same* `usage` payload), so we:
+    //   - capture the timestamp of the previous event the first time we see
+    //     a given message id  → that's the start of this turn,
+    //   - keep tracking the latest record-index for that message id,
+    //   - after parsing, fill `generation_duration_ms` only on the LAST
+    //     record for each message id (earlier records of the same turn keep
+    //     `None` and are naturally excluded from TPS by the qualifier).
+    //
+    // The result is "turn duration including TTFT / API queue" — biased low
+    // vs the model's true streaming rate, but consistent enough across turns
+    // that the relative numbers within a session stay meaningful. See the
+    // docstring on `TokenUsage::generation_duration_ms` for the full story.
+    let mut prev_event_ts: Option<String> = None;
+    let mut msg_id_first_prev_ts: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let mut msg_id_last_node_idx: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
 
     for (lineno, line) in reader.lines().enumerate() {
         let line = match line {
@@ -199,7 +224,7 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                     id: uuid,
                     parent_id: parent,
                     kind,
-                    timestamp: ts,
+                    timestamp: ts.clone(),
                     model: None,
                     parts,
                     usage: None,
@@ -214,6 +239,10 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                     .get("model")
                     .and_then(Value::as_str)
                     .map(str::to_string);
+                let msg_id = msg
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 let parts = parse_message_content(msg.get("content"));
                 let usage = msg.get("usage").and_then(|u| parse_usage(u));
                 if let Some(u) = &usage {
@@ -224,6 +253,15 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                         peak_context = ctx;
                     }
                 }
+                // Snapshot the pre-this-turn timestamp the first time we see
+                // this msg_id. Multi-block records reuse the same starting
+                // point — the duration spans the whole turn, not block-to-block.
+                if let Some(mid) = msg_id.as_ref() {
+                    msg_id_first_prev_ts
+                        .entry(mid.clone())
+                        .or_insert_with(|| prev_event_ts.clone());
+                    msg_id_last_node_idx.insert(mid.clone(), nodes.len());
+                }
                 nodes.push(SessionNode {
                     id: uuid,
                     parent_id: parent,
@@ -232,7 +270,7 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                     } else {
                         NodeKind::Assistant
                     },
-                    timestamp: ts,
+                    timestamp: ts.clone(),
                     model,
                     parts,
                     usage,
@@ -261,7 +299,7 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                     id: uuid,
                     parent_id: parent,
                     kind: NodeKind::System,
-                    timestamp: ts,
+                    timestamp: ts.clone(),
                     model: None,
                     parts: vec![MessagePart::Note { text }],
                     usage: None,
@@ -282,7 +320,7 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
                     id: uuid,
                     parent_id: parent,
                     kind: NodeKind::Meta,
-                    timestamp: ts,
+                    timestamp: ts.clone(),
                     model: None,
                     parts: vec![MessagePart::Attachment { path: path_s, mime }],
                     usage: None,
@@ -292,6 +330,30 @@ fn parse_session_file(path: &Path) -> Result<(SessionSummary, Vec<SessionNode>)>
             }
             _ => {
                 // skip pure-metadata events
+            }
+        }
+
+        // Update the running "previous event timestamp" used to bracket the
+        // start of the next assistant turn. We update *after* the match so
+        // the first record of any new msg_id captures the prior line's ts,
+        // not its own.
+        if let Some(t) = ts {
+            prev_event_ts = Some(t);
+        }
+    }
+
+    // Backfill generation_duration_ms on the last record of each msg_id.
+    // For multi-block turns, only the final block carries the duration so
+    // that the TPS qualifier counts each turn exactly once. Earlier records
+    // of the same turn keep generation_duration_ms = None.
+    for (mid, idx) in &msg_id_last_node_idx {
+        let last_ts = nodes.get(*idx).and_then(|n| n.timestamp.clone());
+        let prev_ts = msg_id_first_prev_ts.get(mid).cloned().flatten();
+        let (Some(last_ts), Some(prev_ts)) = (last_ts, prev_ts) else { continue };
+        let Some(dur_ms) = duration_ms_iso(&prev_ts, &last_ts) else { continue };
+        if let Some(node) = nodes.get_mut(*idx) {
+            if let Some(u) = node.usage.as_mut() {
+                u.generation_duration_ms = Some(dur_ms);
             }
         }
     }
@@ -455,6 +517,20 @@ fn load_subagents(parent: &Path) -> Result<Vec<SubAgentSession>> {
     Ok(out)
 }
 
+/// Difference between two RFC 3339 / ISO-8601 timestamps in milliseconds.
+/// Returns `None` if either value can't be parsed or if `b` precedes `a`.
+fn duration_ms_iso(a: &str, b: &str) -> Option<u64> {
+    use chrono::DateTime;
+    let ta = DateTime::parse_from_rfc3339(a).ok()?;
+    let tb = DateTime::parse_from_rfc3339(b).ok()?;
+    let diff = tb.timestamp_millis().checked_sub(ta.timestamp_millis())?;
+    if diff < 0 {
+        None
+    } else {
+        Some(diff as u64)
+    }
+}
+
 fn read_meta(meta_path: &Path) -> (Option<String>, Option<String>, Option<String>) {
     let raw = match fs::read_to_string(meta_path) {
         Ok(s) => s,
@@ -495,6 +571,8 @@ fn parse_usage(u: &Value) -> Option<TokenUsage> {
             .get("service_tier")
             .and_then(Value::as_str)
             .map(str::to_string),
+        // Filled later in parse_session_file once we know the prev-event ts.
+        generation_duration_ms: None,
     })
 }
 

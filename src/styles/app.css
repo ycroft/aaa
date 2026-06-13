@@ -493,6 +493,12 @@ button { font-family: inherit; }
   color: var(--text-1);
   display: none;
   white-space: normal;
+  /* Opt back into text selection — body has `user-select: none` globally so
+     metric tooltip text would otherwise be unselectable. Cursor switches to
+     `text` so the affordance is obvious. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 .main .session-head .metric.has-tooltip:hover .metric-tooltip,
 .main .session-head .metric.has-tooltip:focus-within .metric-tooltip {
@@ -518,6 +524,116 @@ button { font-family: inherit; }
 }
 .main .session-head .metric .metric-tooltip-empty {
   color: var(--text-3);
+  font-style: italic;
+}
+
+/* File-list tooltip variant — used by the agent-level "files read" / "files
+   written" metrics. Wider than the default tool-breakdown tooltip so longish
+   absolute paths fit, but capped so a single super-long path can't blow the
+   tooltip out. compactMiddlePath() in format.ts collapses middle segments
+   first; this is just the visual cap. */
+.main .session-head .metric .metric-tooltip:has(.metric-tooltip-files) {
+  max-width: 560px;
+}
+.main .session-head .metric .metric-tooltip-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.main .session-head .metric .metric-tooltip-file {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-1);
+  white-space: nowrap;
+  padding: 1px 2px;
+}
+
+/* Context-curve tooltip — line chart showing per-node context % across the
+   active agent. Sized to the SVG it contains; min-width avoids the tooltip
+   collapsing when the body would otherwise be narrower than the chart. */
+.main .session-head .metric .metric-tooltip:has(.metric-tooltip-ctx) {
+  min-width: 500px;
+  max-width: 520px;
+}
+.main .session-head .metric .metric-tooltip-ctx-caption {
+  color: var(--text-3);
+  font-size: 10px;
+  margin: 0 0 4px 0;
+}
+.main .session-head .metric .ctx-curve {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.main .session-head .metric .ctx-curve-grid {
+  stroke: var(--border-1);
+  stroke-width: 1;
+}
+.main .session-head .metric .ctx-curve-axis {
+  fill: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.main .session-head .metric .ctx-curve-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.main .session-head .metric .ctx-curve-dot {
+  fill: var(--accent);
+}
+.main .session-head .metric .ctx-curve-dot.is-peak {
+  fill: var(--error, var(--warn));
+}
+.main .session-head .metric .ctx-curve-dot.is-interpolated {
+  fill: var(--text-3);
+  opacity: 0.55;
+}
+/* Forward-filled segments are the same colour as the live line, but dashed
+   and dimmed so it's clear those points are estimates carried over rather
+   than real measurements for that turn. */
+.main .session-head .metric .ctx-curve-line.is-interpolated {
+  stroke: var(--text-3);
+  stroke-dasharray: 4 3;
+  opacity: 0.7;
+}
+/* TPS-curve container shares the ctx-curve sizing, but the agent-level
+   metric stacks the summary block on top of the chart, so the tooltip
+   needs a bit more vertical room. */
+.main .session-head .metric .metric-tooltip-tps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* The TPS chip is always the last metric in its grid, so it's typically
+   near the right edge of the panel. The default `left: 0` anchor would
+   push the ~500px-wide tooltip off-screen. Flip the anchor to the right
+   edge of the chip so the tooltip grows leftward instead. The viewport
+   clamp keeps it visible even when the panel itself is narrower than the
+   tooltip's preferred width. */
+.main .session-head .metric .metric-tooltip:has(.metric-tooltip-tps) {
+  left: auto;
+  right: 0;
+  max-width: min(520px, calc(100vw - 32px));
+}
+.main .session-head .metric .metric-tooltip-tps-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.main .session-head .metric .metric-tooltip-tps-caveat {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 10px;
   font-style: italic;
 }
 
@@ -682,6 +798,29 @@ mark.search-hit {
    default .th-nav-btn rule above (22px), so no override needed here. */
 .timeline-header .th-msg-search .th-nav-btn {
   padding: 0 7px;
+}
+
+/* Hit-cursor: prev/next buttons + "n/total" counter, only rendered while
+   an active search has 1+ hits. The counter reads currentOrdinal+1 so
+   1-based numbering matches the user's mental model. */
+.timeline-header .th-search-cursor {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+.timeline-header .th-search-cursor .th-nav-btn {
+  padding: 0 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+.timeline-header .th-search-counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  min-width: 36px;
+  text-align: center;
+  user-select: none;
 }
 
 /* ---- Agent switcher (lives in the agent-section label) ---- */

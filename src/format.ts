@@ -10,6 +10,13 @@ export function formatTokens(n: number | null | undefined): string {
   return (n / 1_000_000).toFixed(2) + "M";
 }
 
+// Tokens-per-second readout. Single decimal under 100 t/s, integer above —
+// once you cross "fast model" territory the fractional digit just adds noise.
+export function formatTps(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n <= 0) return "—";
+  return n < 100 ? n.toFixed(1) : Math.round(n).toString();
+}
+
 export function formatBytes(n: number | null | undefined): string {
   if (n == null) return "—";
   if (n < 1024) return n + "B";
@@ -52,6 +59,36 @@ export function shortPath(p: string | null | undefined, maxLen = 64): string {
   const head = p.slice(0, 18);
   const tail = p.slice(p.length - (maxLen - 18 - 3));
   return `${head}…${tail}`;
+}
+
+// Collapse middle segments of a path while always keeping the filename and the
+// last directory intact. Used for the agent file-list tooltip so long absolute
+// paths don't blow the tooltip out horizontally. Falls back to character-level
+// middle ellipsis when the basename alone is already too long.
+export function compactMiddlePath(p: string, maxLen = 72): string {
+  if (p.length <= maxLen) return p;
+  // Match the original separator style (mixed paths exist on Windows).
+  const segs = p.split(/[\\/]/);
+  // Use the first non-empty separator from the input so absolute and Windows
+  // paths render with their native style.
+  const sepMatch = p.match(/[\\/]/);
+  const sep = sepMatch ? sepMatch[0] : "/";
+  if (segs.length >= 4) {
+    // Preserve a leading empty segment for absolute paths ("/a/b" -> ["", "a", "b"]).
+    const headCount = segs[0] === "" ? 2 : 1;
+    const head = segs.slice(0, headCount).join(sep);
+    const tail = segs.slice(-2).join(sep);
+    const candidate = `${head}${sep}…${sep}${tail}`;
+    if (candidate.length <= maxLen) return candidate;
+    // Last two segments alone, in case the head pushed it over.
+    const tailOnly = `…${sep}${tail}`;
+    if (tailOnly.length <= maxLen) return tailOnly;
+  }
+  // Fall through: not enough segments to fold, or basename itself too long.
+  const keep = Math.max(8, maxLen - 1);
+  const headChars = Math.ceil(keep / 2);
+  const tailChars = keep - headChars;
+  return `${p.slice(0, headChars)}…${p.slice(p.length - tailChars)}`;
 }
 
 export function compactPreview(text: string, max = 200): string {

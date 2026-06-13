@@ -79,8 +79,10 @@ export interface AgentStats {
   toolCallTotal: number;
   toolCallByName: Array<[string, number]>;
   filesRead: number;
+  filesReadList: string[];
   linesRead: number;
   filesWritten: number;
+  filesWrittenList: string[];
   linesWritten: number;
 }
 
@@ -213,8 +215,10 @@ export function computeAgentStats(
     toolCallTotal,
     toolCallByName,
     filesRead: filesReadSet.size,
+    filesReadList: [...filesReadSet],
     linesRead,
     filesWritten: filesWrittenSet.size,
+    filesWrittenList: [...filesWrittenSet],
     linesWritten,
   };
 }

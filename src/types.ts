@@ -54,6 +54,8 @@ export interface TokenUsage {
   cache_creation_input_tokens: number;
   cache_read_input_tokens: number;
   service_tier: string | null;
+  /** Provider-best-effort generation duration. See `core/src/model.rs`. */
+  generation_duration_ms?: number | null;
 }
 
 export interface SessionNode {
@@ -89,7 +91,41 @@ export interface SessionDetail {
   nodes: SessionNode[];
   /** Empty for providers without a sub-agent concept (e.g. opencode). */
   subagents: SubAgentSession[];
+  /** Whole-session TPS aggregate. `null` when no qualifying turn was found. */
+  tps_session?: TpsMetrics | null;
+  /** Per-agent TPS, keyed by `agent_id` ("<main>" for the parent). */
+  tps_per_agent?: Record<string, AgentTps>;
 }
+
+/** Mirror of `aaa_core::model::TpsMetrics`. `null` mean / median when there
+ *  were no qualifying turns; `excluded_count` reflects assistant turns that
+ *  *did* have duration data but failed the qualification thresholds. */
+export interface TpsMetrics {
+  tps_mean: number | null;
+  tps_median: number | null;
+  sample_count: number;
+  total_output_tokens: number;
+  total_generation_ms: number;
+  excluded_count: number;
+}
+
+/** One point on the per-agent TPS curve. `interpolated` flags points where
+ *  the underlying turn didn't qualify and we forward-filled from the prior
+ *  valid TPS — used by the chart to draw those segments in a muted style. */
+export interface TpsSeriesPoint {
+  node_id: string;
+  tps: number;
+  interpolated: boolean;
+}
+
+export interface AgentTps {
+  metrics: TpsMetrics;
+  series: TpsSeriesPoint[];
+}
+
+/** Sentinel `agent_id` under which the parent agent's TPS lives in
+ *  `SessionDetail.tps_per_agent`. Mirrors `aaa_core::tps::MAIN_AGENT_KEY`. */
+export const MAIN_AGENT_KEY = "<main>";
 
 /// One row of the skill-usage report (mirrors `aaa_core::stats::SkillUsage`).
 ///

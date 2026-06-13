@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { MessagePart, SessionNode } from "../../../types";
 
 // Concat every text-bearing part on a node so the user can match on tool
@@ -34,13 +34,15 @@ function nodeHaystack(node: SessionNode): string {
 /**
  * In-session message search.
  *
- * Triggered explicitly via the button / Enter, never on each keystroke (some
- * sessions have thousands of nodes). On a miss the input flashes red until
- * the user edits the term. Repeating the same term cycles past the last hit.
+ * The search is committed via the magnifier button or Enter, never on each
+ * keystroke (some sessions have thousands of nodes). On a miss the input
+ * flashes red until the user edits the term.
  *
- * Cycles through hits when the same term is searched repeatedly: each call
- * advances past the last hit. On a hit the matched node is force-expanded so
- * the result is actually visible.
+ * After a successful run the hook exposes the full list of hit indices plus
+ * a 0-based cursor; callers can render a slider to scrub forward/backward
+ * through hits and a "n/total" counter. Pressing Enter / clicking the
+ * magnifier with the same active term still advances to the next hit
+ * (cycling at the end), so the existing keyboard flow keeps working.
  */
 export function useMessageSearch(
   visibleNodes: SessionNode[],
@@ -53,63 +55,117 @@ export function useMessageSearch(
   // successful run() and cleared on reset / empty input. Lower-cased so the
   // <Highlight> component can do raw indexOf without re-normalising.
   const [activeHighlight, setActiveHighlight] = useState("");
-  const lastSearchHitRef = useRef<{ term: string; nodeId: string } | null>(null);
+  // 0-based cursor into hitIndices. -1 means "no hit focused yet" — the
+  // counter UI hides until run() seeds the cursor.
+  const [currentOrdinal, setCurrentOrdinal] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Derived from (visibleNodes, activeHighlight). Rebuilt whenever the
+  // filtered node list shifts (tool filter, agent switch) so the slider
+  // domain stays in sync without an explicit invalidation step.
+  const hitIndices = useMemo(() => {
+    if (!activeHighlight) return [] as number[];
+    const out: number[] = [];
+    for (let i = 0; i < visibleNodes.length; i++) {
+      if (nodeHaystack(visibleNodes[i]).toLowerCase().includes(activeHighlight)) {
+        out.push(i);
+      }
+    }
+    return out;
+  }, [visibleNodes, activeHighlight]);
+
+  // Keep the cursor inside the new hit set when filtering shrinks it. Drop
+  // back to -1 when there are no hits at all so the slider/counter hide.
+  useEffect(() => {
+    setCurrentOrdinal((prev) => {
+      if (hitIndices.length === 0) return -1;
+      if (prev < 0) return prev;
+      if (prev >= hitIndices.length) return hitIndices.length - 1;
+      return prev;
+    });
+  }, [hitIndices.length]);
 
   const reset = useCallback(() => {
     setMessageSearch("");
     setSearchMissed(false);
     setActiveHighlight("");
-    lastSearchHitRef.current = null;
+    setCurrentOrdinal(-1);
   }, []);
 
   const onChange = useCallback((value: string) => {
     setMessageSearch(value);
     setSearchMissed((prev) => (prev ? false : prev));
-    if (value.trim() === "") setActiveHighlight("");
+    if (value.trim() === "") {
+      setActiveHighlight("");
+      setCurrentOrdinal(-1);
+    }
   }, []);
+
+  // Reveal + smooth-scroll a hit into view. Used by both run() (advance) and
+  // goTo() (slider drag). The target node is force-expanded so the matched
+  // text is actually rendered before we measure where to scroll.
+  const focusHit = useCallback(
+    (nodeIdx: number) => {
+      const target = visibleNodes[nodeIdx];
+      if (!target) return;
+      forceExpand(target.id);
+      requestAnimationFrame(() => {
+        const body = bodyRef.current;
+        if (!body) return;
+        const el = body.querySelector<HTMLElement>(`#node-${CSS.escape(target.id)}`);
+        if (!el) return;
+        const bodyTop = body.getBoundingClientRect().top;
+        const elTop = el.getBoundingClientRect().top;
+        body.scrollBy({ top: elTop - bodyTop - 8, behavior: "smooth" });
+      });
+    },
+    [visibleNodes, bodyRef, forceExpand],
+  );
 
   const run = useCallback(() => {
     const term = messageSearch.trim();
     if (!term || visibleNodes.length === 0 || !bodyRef.current) return;
     const needle = term.toLowerCase();
-    const last = lastSearchHitRef.current;
-    let startIdx = 0;
-    if (last && last.term === needle) {
-      const lastPos = visibleNodes.findIndex((n) => n.id === last.nodeId);
-      if (lastPos >= 0) startIdx = lastPos + 1;
-    }
-    const total = visibleNodes.length;
-    let foundIdx = -1;
-    for (let i = 0; i < total; i++) {
-      const idx = (startIdx + i) % total;
-      const n = visibleNodes[idx];
-      if (nodeHaystack(n).toLowerCase().includes(needle)) {
-        foundIdx = idx;
-        break;
+
+    // Recompute synchronously so we can decide what to focus without waiting
+    // for the memoized hitIndices to refresh on the next render.
+    const hits: number[] = [];
+    for (let i = 0; i < visibleNodes.length; i++) {
+      if (nodeHaystack(visibleNodes[i]).toLowerCase().includes(needle)) {
+        hits.push(i);
       }
     }
-    if (foundIdx < 0) {
+    if (hits.length === 0) {
       setSearchMissed(true);
       setActiveHighlight("");
-      lastSearchHitRef.current = null;
+      setCurrentOrdinal(-1);
       return;
     }
     setSearchMissed(false);
-    setActiveHighlight(needle);
-    const target = visibleNodes[foundIdx];
-    lastSearchHitRef.current = { term: needle, nodeId: target.id };
-    forceExpand(target.id);
-    requestAnimationFrame(() => {
-      const body = bodyRef.current;
-      if (!body) return;
-      const el = body.querySelector<HTMLElement>(`#node-${CSS.escape(target.id)}`);
-      if (!el) return;
-      const bodyTop = body.getBoundingClientRect().top;
-      const elTop = el.getBoundingClientRect().top;
-      body.scrollBy({ top: elTop - bodyTop - 8, behavior: "smooth" });
-    });
-  }, [messageSearch, visibleNodes, bodyRef, forceExpand]);
+
+    // Same term as last commit → advance to next hit (wrap). New term →
+    // start at the first hit.
+    let nextOrdinal = 0;
+    if (needle === activeHighlight && currentOrdinal >= 0) {
+      nextOrdinal = (currentOrdinal + 1) % hits.length;
+    } else {
+      setActiveHighlight(needle);
+    }
+    setCurrentOrdinal(nextOrdinal);
+    focusHit(hits[nextOrdinal]);
+  }, [messageSearch, visibleNodes, bodyRef, activeHighlight, currentOrdinal, focusHit]);
+
+  // Slider / programmatic jump. Clamps to a valid ordinal; no-op when there
+  // are no hits.
+  const goTo = useCallback(
+    (ordinal: number) => {
+      if (hitIndices.length === 0) return;
+      const clamped = Math.max(0, Math.min(hitIndices.length - 1, ordinal));
+      setCurrentOrdinal(clamped);
+      focusHit(hitIndices[clamped]);
+    },
+    [hitIndices, focusHit],
+  );
 
   return {
     messageSearch,
@@ -119,5 +175,10 @@ export function useMessageSearch(
     onChange,
     run,
     reset,
+    /** Total hits in the current visibleNodes (0 when no active search). */
+    hitCount: hitIndices.length,
+    /** 0-based cursor into the hit list, -1 when no hit is focused. */
+    currentOrdinal,
+    goTo,
   };
 }

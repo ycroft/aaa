@@ -5,12 +5,14 @@ import type {
   SessionNode,
   SubAgentSession,
 } from "../../types";
+import { MAIN_AGENT_KEY } from "../../types";
 import {
   compactPreview,
   formatDuration,
   formatLocalTime,
   formatPercent,
   formatTokens,
+  formatTps,
   shortPath,
 } from "../../format";
 import { useT } from "../../i18n";
@@ -26,7 +28,13 @@ import { Metric } from "./parts/Metric";
 import { PartView } from "./parts/PartView";
 import { ToolChips } from "./parts/ToolChips";
 import { ToolFilterDropdown } from "./parts/ToolFilterDropdown";
-import { ToolBreakdownTooltip, SkillBreakdownTooltip } from "./parts/Tooltips";
+import {
+  ToolBreakdownTooltip,
+  SkillBreakdownTooltip,
+  FileListTooltip,
+  CtxCurveTooltip,
+  TpsCurveTooltip,
+} from "./parts/Tooltips";
 import { SearchHighlightProvider } from "./parts/Highlight";
 
 interface Props {
@@ -72,6 +80,52 @@ function previewOf(node: SessionNode, max: number): string {
     }
   }
   return "(empty)";
+}
+
+// Compact descriptor for the TPS chip's hover. Shows sample size, median,
+// and the totals so the user can sanity-check what the average is built on
+// — and renders the empty hint when no turn qualified.
+function TpsTooltip({
+  metrics,
+}: {
+  metrics: import("../../types").TpsMetrics | null | undefined;
+}) {
+  const t = useT();
+  if (!metrics || metrics.sample_count === 0) {
+    return (
+      <span className="metric-tooltip-empty">
+        {t("viewer.timeline.tps_tooltip_empty")}
+      </span>
+    );
+  }
+  const total = metrics.sample_count + metrics.excluded_count;
+  return (
+    <div className="metric-tooltip-tps-summary">
+      <div>{t("viewer.timeline.tps_tooltip_caption")}</div>
+      <div>
+        {t("viewer.timeline.tps_tooltip_samples", {
+          count: metrics.sample_count,
+          total,
+        })}
+      </div>
+      {metrics.tps_median != null && (
+        <div>
+          {t("viewer.timeline.tps_tooltip_median", {
+            value: formatTps(metrics.tps_median),
+          })}
+        </div>
+      )}
+      <div>
+        {t("viewer.timeline.tps_tooltip_total", {
+          tokens: formatTokens(metrics.total_output_tokens),
+          duration: formatDuration(metrics.total_generation_ms),
+        })}
+      </div>
+      <div className="metric-tooltip-tps-caveat">
+        {t("viewer.timeline.tps_tooltip_caveat")}
+      </div>
+    </div>
+  );
 }
 
 export function SessionViewer({
@@ -320,6 +374,14 @@ export function SessionViewer({
   const aSummary = activeAgent.summary;
   const inSubagent = activeAgent.subagent != null;
 
+  // TPS lookups — both fields ship with optional defaults from the Rust side
+  // (older cached SessionDetails won't have them), so guard with `??`.
+  const sessionTps = session.tps_session ?? null;
+  const tpsByAgent = session.tps_per_agent ?? {};
+  const activeAgentTps = activeAgent.subagent
+    ? tpsByAgent[activeAgent.subagent.agent_id]
+    : tpsByAgent[MAIN_AGENT_KEY];
+
   const sessionAiPctStr = sessionTotals.durationMs != null
     ? formatPercent(sessionTotals.aiWorkMs, sessionTotals.durationMs)
     : "—";
@@ -380,6 +442,11 @@ export function SessionViewer({
             <Metric label={t("viewer.metric.ai_work_time")} value={formatDuration(sessionTotals.aiWorkMs)} />
             <Metric label={t("viewer.metric.ai_work_pct")} value={sessionAiPctStr} />
             <Metric label={t("viewer.metric.subagent_count")} value={String(sessionTotals.subagentCount)} />
+            <Metric
+              label={t("viewer.metric.tps")}
+              value={formatTps(sessionTps?.tps_mean ?? null)}
+              tooltip={<TpsTooltip metrics={sessionTps} />}
+            />
           </div>
         </div>
 
@@ -423,12 +490,53 @@ export function SessionViewer({
               value={String(agentStats.toolCallTotal)}
               tooltip={<ToolBreakdownTooltip byName={agentStats.toolCallByName} />}
             />
-            <Metric label={t("viewer.metric.files_read")} value={String(agentStats.filesRead)} />
+            <Metric
+              label={t("viewer.metric.files_read")}
+              value={String(agentStats.filesRead)}
+              tooltip={
+                <FileListTooltip
+                  paths={agentStats.filesReadList}
+                  emptyText={t("viewer.timeline.tooltip_no_files_read")}
+                />
+              }
+            />
             <Metric label={t("viewer.metric.lines_read")} value={String(agentStats.linesRead)} />
-            <Metric label={t("viewer.metric.files_written")} value={String(agentStats.filesWritten)} />
+            <Metric
+              label={t("viewer.metric.files_written")}
+              value={String(agentStats.filesWritten)}
+              tooltip={
+                <FileListTooltip
+                  paths={agentStats.filesWrittenList}
+                  emptyText={t("viewer.timeline.tooltip_no_files_written")}
+                />
+              }
+            />
             <Metric label={t("viewer.metric.lines_written")} value={String(agentStats.linesWritten)} />
-            <Metric label={t("viewer.metric.peak_ctx")} value={formatTokens(aSummary.peak_context_tokens)} />
+            <Metric
+              label={t("viewer.metric.peak_ctx")}
+              value={formatTokens(aSummary.peak_context_tokens)}
+              tooltip={
+                <CtxCurveTooltip
+                  nodes={activeAgent.nodes}
+                  vizById={vizById}
+                  emptyText={t("viewer.timeline.ctx_curve_empty")}
+                />
+              }
+            />
             <Metric label={t("viewer.metric.agent_duration")} value={formatDuration(agentStats.durationMs)} />
+            <Metric
+              label={t("viewer.metric.tps")}
+              value={formatTps(activeAgentTps?.metrics.tps_mean ?? null)}
+              tooltip={
+                <div className="metric-tooltip-tps">
+                  <TpsTooltip metrics={activeAgentTps?.metrics ?? null} />
+                  <TpsCurveTooltip
+                    series={activeAgentTps?.series ?? []}
+                    emptyText={t("viewer.timeline.tps_curve_empty")}
+                  />
+                </div>
+              }
+            />
           </div>
         </div>
       </div>
@@ -482,6 +590,35 @@ export function SessionViewer({
                 title={t("viewer.timeline.search_button_hint")}
                 aria-label={t("viewer.timeline.search_button_aria")}
               >🔍</button>
+              {search.hitCount > 0 && (
+                <span className="th-search-cursor">
+                  <button
+                    type="button"
+                    className="th-nav-btn"
+                    onClick={() =>
+                      search.goTo(
+                        (Math.max(0, search.currentOrdinal) - 1 + search.hitCount) % search.hitCount,
+                      )
+                    }
+                    disabled={search.hitCount <= 1}
+                    title={t("viewer.timeline.search_prev_hint")}
+                    aria-label={t("viewer.timeline.search_prev_hint")}
+                  >‹</button>
+                  <span className="th-search-counter">
+                    {Math.max(0, search.currentOrdinal) + 1}/{search.hitCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="th-nav-btn"
+                    onClick={() =>
+                      search.goTo((Math.max(0, search.currentOrdinal) + 1) % search.hitCount)
+                    }
+                    disabled={search.hitCount <= 1}
+                    title={t("viewer.timeline.search_next_hint")}
+                    aria-label={t("viewer.timeline.search_next_hint")}
+                  >›</button>
+                </span>
+              )}
             </span>
           </div>
           <div className="th-right">

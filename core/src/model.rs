@@ -95,6 +95,20 @@ pub struct TokenUsage {
     pub cache_creation_input_tokens: u64,
     pub cache_read_input_tokens: u64,
     pub service_tier: Option<String>,
+    /// How long the model spent generating this turn, in milliseconds.
+    ///
+    /// Provider-specific semantics — both are biased *low* (TPS will read low
+    /// vs the model's true streaming rate), but biased the same way so within
+    /// a session the relative numbers are comparable:
+    ///   - claude-code: `last_block_ts − previous_event_ts`. Includes TTFT,
+    ///     network round-trip, and any API-side queue.
+    ///   - opencode: `time.completed − time.created`. Includes any tool
+    ///     execution that happened inside the same assistant message.
+    ///
+    /// `None` when the provider couldn't pin down a duration — e.g. the very
+    /// first assistant turn in a claude-code session has nothing before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_duration_ms: Option<u64>,
 }
 
 impl TokenUsage {
@@ -114,6 +128,15 @@ pub struct SessionDetail {
     /// Empty for providers that don't have a sub-agent concept (e.g. opencode).
     #[serde(default)]
     pub subagents: Vec<SubAgentSession>,
+    /// Whole-session TPS aggregate (parent + Normal subagents).
+    /// `None` when no qualifying assistant turn was found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tps_session: Option<TpsMetrics>,
+    /// Per-agent TPS, keyed by `agent_id` (`"<main>"` for the parent agent).
+    /// Includes both metrics and the forward-filled series the UI plots.
+    /// Always present (possibly empty).
+    #[serde(default)]
+    pub tps_per_agent: std::collections::HashMap<String, AgentTps>,
 }
 
 /// A sub-agent session — its own context window, own timeline, anchored to the
@@ -186,4 +209,43 @@ pub struct ProviderInfo {
     pub default_root: Option<String>,
     pub root_exists: bool,
     pub is_implemented: bool,
+}
+
+/// Aggregate tokens-per-second metrics over a set of assistant turns.
+///
+/// `tps_mean` is the **arithmetic mean of per-turn TPS values**, not
+/// `total_output / total_duration`. The latter is a weighted mean and gets
+/// dominated by one super-long turn; the former gives every qualifying turn
+/// equal weight, which is what the UI label "average TPS" should mean.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TpsMetrics {
+    pub tps_mean: Option<f64>,
+    pub tps_median: Option<f64>,
+    pub sample_count: u32,
+    pub total_output_tokens: u64,
+    pub total_generation_ms: u64,
+    /// Assistant nodes that *had* `usage` + `generation_duration_ms` but were
+    /// rejected by the qualification thresholds (too few tokens or too short
+    /// a duration). The UI uses this for an "X / X+Y" sample-size hint.
+    pub excluded_count: u32,
+}
+
+/// One point on the per-agent TPS curve.
+///
+/// `tps` is non-zero for every point — when a node fails qualification we
+/// forward-fill the previous valid value and set `interpolated = true` so
+/// the UI can render that segment in a muted style. The forward-fill avoids
+/// the line dropping to zero between qualifying turns.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TpsSeriesPoint {
+    pub node_id: String,
+    pub tps: f64,
+    pub interpolated: bool,
+}
+
+/// One agent's TPS rollup — the metrics and the forward-filled curve series.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentTps {
+    pub metrics: TpsMetrics,
+    pub series: Vec<TpsSeriesPoint>,
 }
