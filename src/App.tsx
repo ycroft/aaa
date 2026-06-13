@@ -568,7 +568,7 @@ function AppInner() {
         onFeedback={() => setFeedbackOpen(true)}
         hubConnected={hubConnected}
       />
-      <div className="body">
+      <div className="app-body">
         <SessionList
           sessions={sessions}
           filter={filter}

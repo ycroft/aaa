@@ -1,3 +1,7 @@
+v1.0.2
+-------
+- 修复一个长期存在的 CSS 命名冲突 bug：外层布局容器和 part 内 <pre> 都用了 className="body"，全局 .body { display:grid; grid-template-columns:360px 1fr } 会顺着 cascade 应用到 <pre> 上——表现为 tool_use input / tool_result content 在右边像被空气墙挡住，每行约 40 字符就强制换行；上一版加完搜索高亮后，<pre> 的子节点从 1 个文字节点变成 [文本片段, <mark>, ...] 多个，全部变成 grid item 后 <mark> 跑到第二列，造成"匹配字符消失原位置 + 右半边整片黄色"。把外层容器的类名从 .body 改成 .app-body 解开冲突，两个症状一并修好。
+
 v1.0.1
 -------
 - 修复：Ctrl+F 之前在搜索框已聚焦时会"逃逸"到 WebView 自带的 find-on-page 工具条；现在所有路径都 preventDefault，焦点已在输入框就只屏蔽默认行为不抢焦点，否则路由到对应搜索框；Ctrl+G 也一并屏蔽，避免 WebView 的"查找下一个"再次劫持
