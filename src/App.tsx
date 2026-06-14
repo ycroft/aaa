@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { exit as processExit } from "@tauri-apps/plugin-process";
 
@@ -7,16 +7,9 @@ import type {
   AppSettings,
   ProviderInfo,
   RemoteHostInfo,
-  SessionDetail,
-  SessionFilter,
-  SessionSummary,
 } from "./types";
-import { EMPTY_FILTER } from "./types";
 
 import { Menubar, type MenuDef } from "./components/Menubar";
-import { Toolbar } from "./components/Toolbar";
-import { SessionList } from "./components/SessionList";
-import { SessionViewer, type ViewerCounts } from "./components/SessionViewer";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { FeedbackDialog } from "./components/FeedbackDialog";
@@ -25,16 +18,18 @@ import { AboutDialog } from "./components/AboutDialog";
 import { ProviderSplash } from "./components/ProviderSplash";
 import { RemoteProgressDialog } from "./components/RemoteProgressDialog";
 import { StatusBar } from "./components/StatusBar";
+import { TabBar } from "./components/TabBar";
+import {
+  SessionPanel,
+  type ActiveBackend,
+  type SessionPanelHandle,
+  type SessionPanelSnapshot,
+} from "./components/SessionPanel";
+import { EmptyWorkspace } from "./components/EmptyWorkspace";
 
 import { useStatusHint } from "./hooks/useStatusHint";
-import { shortPath, sanitizeFileName, exportTimestamp } from "./format";
-import { I18nProvider, useI18n, type LanguagePref } from "./i18n";
-
-interface ActiveBackend {
-  provider: ProviderInfo;
-  root: string;
-  remote: RemoteHostInfo | null;
-}
+import { I18nProvider, useI18n, useT, type LanguagePref } from "./i18n";
+import { panelIdentity, type PanelDescriptor } from "./panels";
 
 interface PendingRemoteOpen {
   taskId: string;
@@ -81,21 +76,18 @@ export function App() {
 }
 
 function AppInner() {
-  const { t, setPref: setLangPref } = useI18n();
+  const t = useT();
+  const { setPref: setLangPref } = useI18n();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [remotes, setRemotes] = useState<RemoteHostInfo[]>([]);
-  const [active, setActive] = useState<ActiveBackend | null>(null);
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeSession, setActiveSession] = useState<SessionDetail | null>(null);
-  const [activePath, setActivePath] = useState<string | null>(null);
-  const [filter, setFilter] = useState<SessionFilter>(EMPTY_FILTER);
-  const [expandAll, setExpandAll] = useState(false);
-  const [counts, setCounts] = useState<ViewerCounts>({
-    totalNodes: 0,
-    expandedNodes: 0,
-    peakCtx: 0,
-  });
+
+  // ---- Multi-panel state. ----
+  const [panels, setPanels] = useState<PanelDescriptor[]>([]);
+  const [activePanelId, setActivePanelId] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Record<string, SessionPanelSnapshot>>({});
+  const panelHandles = useRef<Map<string, SessionPanelHandle>>(new Map());
+
   const [splashOpen, setSplashOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -103,11 +95,6 @@ function AppInner() {
   const [aiAnalysisOpen, setAiAnalysisOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState(() => t("status.ready"));
-  const [error, setError] = useState<string | null>(null);
-  const [loadingSession, setLoadingSession] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const hint = useStatusHint();
 
   // ---- Initial load: providers + settings + remotes, then show splash. ----
@@ -123,8 +110,8 @@ function AppInner() {
         setSettings(s);
         setRemotes(rs);
         setSplashOpen(true);
-      } catch (e: any) {
-        setError(String(e));
+      } catch (e: unknown) {
+        console.error(e);
       }
     })();
   }, []);
@@ -142,27 +129,6 @@ function AppInner() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings.ui.theme || "light";
   }, [settings.ui.theme]);
-
-  // ---- Session list refresh when active backend changes. ----
-  const refreshSessions = useCallback(async () => {
-    if (!active) return;
-    setBusy(true);
-    setStatus(t("status.scanning", { root: active.root }));
-    try {
-      const list = await api.listSessions(active.provider.id, active.root);
-      setSessions(list);
-      setStatus(t("status.loaded_sessions", { count: list.length }));
-      setError(null);
-    } catch (e: any) {
-      setError(String(e));
-      setSessions([]);
-      setStatus(t("status.scan_failed"));
-    } finally {
-      setBusy(false);
-    }
-  }, [active, t]);
-
-  useEffect(() => { void refreshSessions(); }, [refreshSessions]);
 
   // Probe the hub on startup, then every 30 minutes. All failures stay silent;
   // the only effect on the UI is the Toolbar's "Feedback" button enable state.
@@ -184,25 +150,111 @@ function AppInner() {
     };
   }, []);
 
-  const pickBackend = useCallback(
-    async (p: ProviderInfo, customRoot?: string) => {
-      const root = customRoot || settings.provider_roots[p.id] || p.default_root || "";
-      if (!root) {
-        setError(t("alert.no_directory_configured"));
-        return;
-      }
-      setActive({ provider: p, root, remote: null });
-      setActiveSession(null);
-      setActivePath(null);
-      setSplashOpen(false);
+  // ---- Panel lifecycle ----------------------------------------------------
+  const activeSnapshot = activePanelId ? snapshots[activePanelId] : undefined;
+
+  const addOrFocusPanel = useCallback(
+    (descriptor: Omit<PanelDescriptor, "id">) => {
+      setPanels((prev) => {
+        const dup = prev.find((p) => p.identity === descriptor.identity);
+        if (dup) {
+          // Update title/subtitle/backend in case the user re-selected the
+          // same source via a different path (e.g. fresh re-sync).
+          const next = prev.map((p) =>
+            p.id === dup.id
+              ? { ...p, title: descriptor.title, subtitle: descriptor.subtitle, backend: descriptor.backend }
+              : p,
+          );
+          setActivePanelId(dup.id);
+          return next;
+        }
+        const id =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        setActivePanelId(id);
+        return [...prev, { ...descriptor, id }];
+      });
     },
-    [settings, t],
+    [],
   );
 
-  const pickBackendCustom = useCallback(async (p: ProviderInfo) => {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") void pickBackend(p, picked);
-  }, [pickBackend]);
+  const closePanel = useCallback((id: string) => {
+    setPanels((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      setActivePanelId((cur) => {
+        if (cur !== id) return cur;
+        if (next.length === 0) return null;
+        const closingIdx = prev.findIndex((p) => p.id === id);
+        // Pick the neighbouring tab — prefer the one to the left so closing the
+        // last tab focuses the previous, which is typically what the user wants.
+        const fallback = next[Math.max(0, closingIdx - 1)] ?? next[0];
+        return fallback.id;
+      });
+      return next;
+    });
+    setSnapshots((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    panelHandles.current.delete(id);
+  }, []);
+
+  const openSessionPanel = useCallback(
+    (active: ActiveBackend) => {
+      addOrFocusPanel({
+        identity: panelIdentity(active),
+        title: active.provider.display_name,
+        subtitle: active.remote ? `↗ ${active.remote.label}` : null,
+        icon: active.remote ? "↗" : "▣",
+        backend: active,
+      });
+    },
+    [addOrFocusPanel],
+  );
+
+  // When settings change a local provider's root override, propagate it to
+  // any open local panels bound to that provider so they re-scan.
+  useEffect(() => {
+    setPanels((prev) => {
+      let mutated = false;
+      const next = prev.map((p) => {
+        if (p.backend.remote) return p;
+        const overridden =
+          settings.provider_roots[p.backend.provider.id] ||
+          p.backend.provider.default_root ||
+          "";
+        if (!overridden || overridden === p.backend.root) return p;
+        mutated = true;
+        return { ...p, backend: { ...p.backend, root: overridden } };
+      });
+      return mutated ? next : prev;
+    });
+  }, [settings.provider_roots]);
+
+  // ---- Splash callbacks ---------------------------------------------------
+  const pickBackend = useCallback(
+    (p: ProviderInfo, customRoot?: string) => {
+      const root = customRoot || settings.provider_roots[p.id] || p.default_root || "";
+      if (!root) {
+        window.alert(t("alert.no_directory_configured"));
+        return;
+      }
+      openSessionPanel({ provider: p, root, remote: null });
+      setSplashOpen(false);
+    },
+    [settings.provider_roots, openSessionPanel, t],
+  );
+
+  const pickBackendCustom = useCallback(
+    async (p: ProviderInfo) => {
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked === "string") pickBackend(p, picked);
+    },
+    [pickBackend],
+  );
 
   const onPickRemote = useCallback(
     (remote: RemoteHostInfo, providerId: string) => {
@@ -211,14 +263,12 @@ function AppInner() {
       // Hand off to the progress dialog. It owns the actual remote_open call
       // and reports progress via the `remote-progress` Tauri event.
       const taskId =
-        (typeof crypto !== "undefined" && "randomUUID" in crypto)
+        typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `task-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      setError(null);
-      setStatus(t("status.connecting_to", { label: remote.label }));
       setPendingRemote({ taskId, remote, provider, startKey: taskId });
     },
-    [providers, t],
+    [providers],
   );
 
   // Open a previously-synced cache directly. Skips SSH so it works fully
@@ -228,142 +278,100 @@ function AppInner() {
     (remote: RemoteHostInfo, providerId: string, localRoot: string) => {
       const provider = providers.find((p) => p.id === providerId);
       if (!provider) return;
-      setActive({ provider, root: localRoot, remote });
-      setActiveSession(null);
-      setActivePath(null);
+      openSessionPanel({ provider, root: localRoot, remote });
       setSplashOpen(false);
-      setError(null);
-      setStatus(t("status.opened_cache", { provider: provider.display_name, label: remote.label }));
     },
-    [providers, t],
+    [providers, openSessionPanel],
   );
 
   const onRemoteOpenSuccess = useCallback(
-    (result: { local_root: string; sync_stats: { files_pulled: number; files_skipped: number; files_deleted_locally: number } }) => {
+    (result: {
+      local_root: string;
+      sync_stats: { files_pulled: number; files_skipped: number; files_deleted_locally: number };
+    }) => {
       const pending = pendingRemote;
       if (!pending) return;
-      setActive({
+      openSessionPanel({
         provider: pending.provider,
         root: result.local_root,
         remote: pending.remote,
       });
-      setActiveSession(null);
-      setActivePath(null);
       setSplashOpen(false);
-      setStatus(
-        t("status.synced_from", {
-          label: pending.remote.label,
-          pulled: result.sync_stats.files_pulled,
-          skipped: result.sync_stats.files_skipped,
-          deleted: result.sync_stats.files_deleted_locally,
-        }),
-      );
       setPendingRemote(null);
       void refreshRemotes();
     },
-    [pendingRemote, refreshRemotes, t],
+    [pendingRemote, openSessionPanel, refreshRemotes],
   );
 
   const onRemoteOpenCancelled = useCallback(() => {
     setPendingRemote(null);
-    setStatus(t("status.connect_cancelled"));
-  }, [t]);
-
-  const onRemoteOpenError = useCallback((msg: string) => {
-    if (msg.startsWith("HOST_KEY_MISMATCH:")) {
-      window.alert(
-        t("alert.host_key_changed", {
-          label: pendingRemote?.remote.label ?? t("alert.this_host"),
-        }),
-      );
-    } else {
-      setError(msg);
-    }
-    setStatus(t("status.connect_failed"));
-    setPendingRemote(null);
-  }, [pendingRemote, t]);
-
-  const onAddRemote = useCallback(() => {
-    setSettingsOpen(true);
   }, []);
 
-  const onSelectSession = useCallback(async (s: SessionSummary) => {
-    if (!active) return;
-    setActivePath(s.source_path);
-    setLoadingSession(true);
-    setActiveSession(null);
-    setError(null);
-    try {
-      const d = await api.loadSession(active.provider.id, s.source_path);
-      setActiveSession(d);
-      setStatus(t("status.loaded_session", { title: d.summary.title || d.summary.session_id }));
-    } catch (e: any) {
-      setError(String(e));
-      setStatus(t("status.load_session_failed"));
-    } finally {
-      setLoadingSession(false);
-    }
-  }, [active, t]);
-
-  const handleExport = useCallback(async () => {
-    if (!active || !activeSession) return;
-    const summary = activeSession.summary;
-    const titleSegment = sanitizeFileName(summary.title, summary.session_id);
-    const fileName = `${titleSegment}__${exportTimestamp()}.json`;
-
-    const targetDir = await openDialog({ directory: true, multiple: false });
-    if (typeof targetDir !== "string") {
-      setStatus(t("status.export_cancelled"));
-      return;
-    }
-
-    setExporting(true);
-    setError(null);
-    try {
-      const exportedPath = await api.exportSession(
-        active.provider.id,
-        summary.source_path,
-        targetDir,
-        fileName,
-      );
-      setStatus(t("status.exported_to", { path: shortPath(exportedPath, 60) }));
-    } catch (e: any) {
-      setError(String(e));
-      setStatus(t("status.export_failed"));
-    } finally {
-      setExporting(false);
-    }
-  }, [active, activeSession, t]);
-
-  const onSaveSettings = useCallback(async (next: AppSettings) => {
-    await api.saveSettings(next);
-    setSettings(next);
-    // Push the (possibly changed) language pref up to I18nProvider so the
-    // catalog and document.lang switch over right away.
-    const pref = next.ui.language;
-    setLangPref(pref === "zh" || pref === "en" ? pref : "auto");
-    // Re-fetch providers in case path overrides changed.
-    const ps = await api.listProviders();
-    setProviders(ps);
-    // Re-fetch remotes too — settings may have edited them via Tab.
-    await refreshRemotes();
-    // Re-bind hub client to the (possibly new) base_url and re-probe status.
-    try {
-      await api.refreshHub();
-      const s = await api.hubStatus();
-      setHubConnected(s === "Connected");
-    } catch {
-      setHubConnected(false);
-    }
-    // If the active backend's override changed, re-scan.
-    if (active && !active.remote) {
-      const newRoot = next.provider_roots[active.provider.id] || active.provider.default_root || "";
-      if (newRoot && newRoot !== active.root) {
-        setActive({ ...active, root: newRoot });
+  const onRemoteOpenError = useCallback(
+    (msg: string) => {
+      if (msg.startsWith("HOST_KEY_MISMATCH:")) {
+        window.alert(
+          t("alert.host_key_changed", {
+            label: pendingRemote?.remote.label ?? t("alert.this_host"),
+          }),
+        );
+      } else {
+        window.alert(msg);
       }
-    }
-    setStatus(t("status.settings_saved"));
-  }, [active, refreshRemotes, setLangPref, t]);
+      setPendingRemote(null);
+    },
+    [pendingRemote, t],
+  );
+
+  const onAddRemote = useCallback(() => setSettingsOpen(true), []);
+
+  // ---- Settings save + propagation ---------------------------------------
+  const onSaveSettings = useCallback(
+    async (next: AppSettings) => {
+      await api.saveSettings(next);
+      setSettings(next);
+      // Push the (possibly changed) language pref up to I18nProvider so the
+      // catalog and document.lang switch over right away.
+      const pref = next.ui.language;
+      setLangPref(pref === "zh" || pref === "en" ? pref : "auto");
+      // Re-fetch providers in case path overrides changed.
+      const ps = await api.listProviders();
+      setProviders(ps);
+      // Re-fetch remotes too — settings may have edited them via Tab.
+      await refreshRemotes();
+      // Re-bind hub client to the (possibly new) base_url and re-probe status.
+      try {
+        await api.refreshHub();
+        const s = await api.hubStatus();
+        setHubConnected(s === "Connected");
+      } catch {
+        setHubConnected(false);
+      }
+    },
+    [refreshRemotes, setLangPref],
+  );
+
+  // ---- Per-panel snapshot bookkeeping ------------------------------------
+  const onPanelSnapshot = useCallback((panelId: string, snap: SessionPanelSnapshot) => {
+    setSnapshots((prev) => ({ ...prev, [panelId]: snap }));
+  }, []);
+
+  const setPanelHandle = useCallback(
+    (panelId: string, handle: SessionPanelHandle | null) => {
+      if (handle) panelHandles.current.set(panelId, handle);
+      else panelHandles.current.delete(panelId);
+    },
+    [],
+  );
+
+  const callActiveHandle = useCallback(
+    (action: keyof SessionPanelHandle) => {
+      if (!activePanelId) return;
+      const h = panelHandles.current.get(activePanelId);
+      h?.[action]();
+    },
+    [activePanelId],
+  );
 
   // ---- Keyboard shortcuts. ----
   useEffect(() => {
@@ -376,7 +384,7 @@ function AppInner() {
       if (e.key === "Escape") {
         if (aiAnalysisOpen) { setAiAnalysisOpen(false); e.preventDefault(); return; }
         if (settingsOpen) { setSettingsOpen(false); e.preventDefault(); return; }
-        if (splashOpen && active) { setSplashOpen(false); e.preventDefault(); return; }
+        if (splashOpen && panels.length > 0) { setSplashOpen(false); e.preventDefault(); return; }
       }
       if ((e.ctrlKey || e.metaKey) && e.key === ",") {
         setSettingsOpen(true);
@@ -396,12 +404,8 @@ function AppInner() {
         // input we leave focus alone; otherwise route to the right search box.
         e.preventDefault();
         if (inEditable) return;
-        const selector = e.altKey
-          ? "input.search"
-          : "input.th-search-input";
-        const el = document.querySelector<HTMLInputElement>(selector);
-        el?.focus();
-        el?.select();
+        if (e.altKey) callActiveHandle("focusSessionSearch");
+        else callActiveHandle("focusMessageSearch");
         return;
       }
       // Ctrl+G is the WebView's "find next" companion — block it for the same
@@ -412,35 +416,51 @@ function AppInner() {
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "E" || e.key === "e")) {
-        if (!inEditable) void handleExport();
+        if (!inEditable) callActiveHandle("exportSession");
         e.preventDefault();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "e" || e.key === "E") && !inEditable) {
-        setExpandAll((v) => !v);
+        callActiveHandle("toggleExpandAll");
         e.preventDefault();
         return;
       }
       if (e.key === "F5") {
-        void refreshSessions();
+        callActiveHandle("refresh");
         e.preventDefault();
         return;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [settingsOpen, aiAnalysisOpen, splashOpen, active, refreshSessions, pendingRemote, handleExport]);
+  }, [
+    settingsOpen,
+    aiAnalysisOpen,
+    splashOpen,
+    panels.length,
+    pendingRemote,
+    callActiveHandle,
+  ]);
 
   // ---- Menus. ----
   const aiReady = settings.ai.mode === "agent" && !!settings.ai.selected_agent;
   const aiNotReadyMsg = !aiReady
-    ? settings.ai.mode === "api" ? t("ai_dialog.not_ready_api") : t("ai_dialog.not_ready_no_agent")
+    ? settings.ai.mode === "api"
+      ? t("ai_dialog.not_ready_api")
+      : t("ai_dialog.not_ready_no_agent")
     : null;
 
   const handleAiAnalysis = useCallback(() => {
-    if (aiNotReadyMsg) { window.alert(aiNotReadyMsg); return; }
+    if (aiNotReadyMsg) {
+      window.alert(aiNotReadyMsg);
+      return;
+    }
     setAiAnalysisOpen(true);
   }, [aiNotReadyMsg]);
+
+  const hasActivePanel = activePanelId !== null;
+  const hasLoadedSession = !!activeSnapshot?.activeSession;
+  const exporting = activeSnapshot?.canExport === false && hasLoadedSession;
 
   const menus: MenuDef[] = useMemo(
     () => [
@@ -458,15 +478,15 @@ function AppInner() {
             label: t("menu.refresh_sessions"),
             shortcut: "F5",
             hint: t("menu.refresh_sessions_hint"),
-            onClick: () => void refreshSessions(),
-            disabled: !active,
+            onClick: () => callActiveHandle("refresh"),
+            disabled: !hasActivePanel,
           },
           {
             label: t("menu.export_session"),
             shortcut: "Ctrl+Shift+E",
             hint: t("menu.export_session_hint"),
-            onClick: () => void handleExport(),
-            disabled: !activeSession || exporting,
+            onClick: () => callActiveHandle("exportSession"),
+            disabled: !hasLoadedSession || exporting,
           },
           {
             label: t("menu.ai_analysis"),
@@ -497,19 +517,18 @@ function AppInner() {
         accelerator: "V",
         items: [
           {
-            label: expandAll ? t("menu.collapse_all") : t("menu.expand_all"),
+            label: activeSnapshot?.expandAll ? t("menu.collapse_all") : t("menu.expand_all"),
             shortcut: "Ctrl+E",
             hint: t("menu.expand_all_hint"),
-            onClick: () => setExpandAll((v) => !v),
+            onClick: () => callActiveHandle("toggleExpandAll"),
+            disabled: !hasActivePanel,
           },
           {
             label: t("menu.filter_sessions"),
             shortcut: "Ctrl+Alt+F",
             hint: t("menu.filter_sessions_hint"),
-            onClick: () => {
-              const el = document.querySelector<HTMLInputElement>("input.search");
-              el?.focus(); el?.select();
-            },
+            onClick: () => callActiveHandle("focusSessionSearch"),
+            disabled: !hasActivePanel,
           },
           { separator: true, label: "" },
           ...(["light", "dark", "win98"] as const).map((theme) => ({
@@ -547,56 +566,58 @@ function AppInner() {
         ],
       },
     ],
-    [active, expandAll, refreshSessions, settings, activeSession, exporting, handleExport, handleAiAnalysis, t],
+    [t, settings, hasActivePanel, hasLoadedSession, exporting, handleAiAnalysis, callActiveHandle, activeSnapshot?.expandAll],
   );
 
-  const providerLabel = active ? active.provider.display_name : t("format.em_dash");
-  const rootLabel = active ? shortPath(active.root, 60) : "—";
+  // ---- Status bar source ---------------------------------------------------
+  const providerLabel =
+    activeSnapshot?.active.provider.display_name ?? t("format.em_dash");
+  const remoteLabel = activeSnapshot?.active.remote?.label ?? null;
+  const status = activeSnapshot?.status ?? t("status.ready");
+  const busy = activeSnapshot?.busy ?? false;
+  const sessionCount = activeSnapshot?.sessionCount ?? 0;
+  const counts = activeSnapshot?.counts ?? { totalNodes: 0, expandedNodes: 0, peakCtx: 0 };
 
   return (
     <div className="app">
       <Menubar menus={menus} />
       <UpdateBanner />
-      <Toolbar
-        filter={filter}
-        onFilterChange={setFilter}
-        sessions={sessions}
-        onRefresh={refreshSessions}
-        onExpandAll={() => setExpandAll(true)}
-        onCollapseAll={() => setExpandAll(false)}
-        expandAll={expandAll}
-        onSwitchBackend={() => setSplashOpen(true)}
-        onSettings={() => setSettingsOpen(true)}
-        providerLabel={providerLabel}
-        rootLabel={rootLabel}
-        onExport={handleExport}
-        canExport={!!activeSession && !exporting}
-        onAiAnalysis={handleAiAnalysis}
-        canAiAnalysis={true}
-        onFeedback={() => setFeedbackOpen(true)}
-        hubConnected={hubConnected}
+      <TabBar
+        panels={panels}
+        activeId={activePanelId}
+        onPick={setActivePanelId}
+        onClose={closePanel}
+        onNew={() => setSplashOpen(true)}
       />
-      <div className="app-body">
-        <SessionList
-          sessions={sessions}
-          filter={filter}
-          activeId={activePath}
-          onPick={onSelectSession}
-        />
-        <SessionViewer
-          session={activeSession}
-          loading={loadingSession}
-          error={error && !sessions.length ? null : error}
-          expandAll={expandAll}
-          previewChars={settings.ui.preview_chars}
-          onCounts={setCounts}
-        />
+      <div className="app-panels">
+        {panels.length === 0 && (
+          <EmptyWorkspace onOpenSplash={() => setSplashOpen(true)} />
+        )}
+        {panels.map((p) => {
+          const visible = p.id === activePanelId;
+          return (
+            <SessionPanel
+              key={p.id}
+              ref={(h) => setPanelHandle(p.id, h)}
+              visible={visible}
+              backend={p.backend}
+              settings={settings}
+              hubConnected={hubConnected}
+              onMetaChange={(snap) => onPanelSnapshot(p.id, snap)}
+              onSwitchBackend={() => setSplashOpen(true)}
+              onSettings={() => setSettingsOpen(true)}
+              onAiAnalysis={() => setAiAnalysisOpen(true)}
+              onFeedback={() => setFeedbackOpen(true)}
+              aiNotReadyMsg={aiNotReadyMsg}
+            />
+          );
+        })}
       </div>
       <StatusBar
         hint={hint}
         providerLabel={providerLabel}
-        remoteLabel={active?.remote?.label ?? null}
-        sessionCount={sessions.length}
+        remoteLabel={remoteLabel}
+        sessionCount={sessionCount}
         expandedNodes={counts.expandedNodes}
         totalNodes={counts.totalNodes}
         peakCtx={counts.peakCtx}
@@ -614,7 +635,7 @@ function AppInner() {
         onPickRemoteCache={onPickRemoteCache}
         onAddRemote={onAddRemote}
         onClose={() => setSplashOpen(false)}
-        closable={!!active}
+        closable={panels.length > 0}
       />
       <SettingsDialog
         open={settingsOpen}
@@ -627,15 +648,22 @@ function AppInner() {
       <AiAnalysisDialog
         open={aiAnalysisOpen}
         settings={settings}
-        activeSession={activeSession}
-        active={active}
+        activeSession={activeSnapshot?.activeSession ?? null}
+        active={
+          activeSnapshot
+            ? { provider: activeSnapshot.active.provider, root: activeSnapshot.active.root }
+            : null
+        }
         onClose={() => setAiAnalysisOpen(false)}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <FeedbackDialog
         open={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}
-        onSubmitted={(id) => setStatus(t("status.feedback_submitted", { id: id.slice(0, 6) }))}
+        // The dialog closes itself after submit; the receipt id isn't routed
+        // anywhere user-facing here because status is now per-panel and
+        // feedback is a global concern.
+        onSubmitted={() => undefined}
       />
       <RemoteProgressDialog
         open={pendingRemote !== null}

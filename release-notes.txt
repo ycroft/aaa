@@ -1,3 +1,11 @@
+v1.4.0
+-------
+- 重构：把"当前数据源"相关的全部状态（active backend / sessions / activeSession / filter / expandAll / counts / loadingSession / exporting / error / status）从 App.tsx 抽到新组件 SessionPanel，App 层只保留全局状态（providers / settings / remotes / hubConnected / 对话框开关 / panels 列表 + activeId）。SessionPanel 通过 onMetaChange 把当前快照（SessionPanelSnapshot）推到 App 层供状态栏 / AI 分析对话框 / 菜单可用性使用，又通过 useImperativeHandle 暴露 refresh / toggleExpandAll / exportSession / focusSessionSearch / focusMessageSearch 给 App 层的全局快捷键调用——只触达当前激活面板，隐藏面板的 input/timeline 不会被误聚焦。
+- 新增：顶部 TabBar，支持以页签形式同时打开多个数据源（本地 claude-code、本地 opencode、远端 claude-code、远端 opencode 等），互不干扰，单独关闭，全部关闭后回到引导态 EmptyWorkspace；中键关闭、+ 按钮新建。每个页签由 backend 的 (provider, root) 或 (provider, remoteId) 去重，从 Splash 重复选择同一来源不会再开新页签而是聚焦已有页签。所有面板都常驻 DOM、靠 CSS display 切换可见性，切页签不会丢 filter/scroll/expand 状态。
+- 改造：选择数据源界面（ProviderSplash）拆成"个人 / 团队"两个页签——个人页签集中本地 backend + 已配置的远程主机；团队页签当前只显示"开发中"占位与未来路线图（团队总览 / 成员钻取 / 管理）。
+- 改造：远程主机列表区限定最大高度（320px），溢出时只在列表内部出滚动条，不再让整个 Splash 面板出滚动条把本地 provider 推出视野。
+- 改动：App 顶层布局从 grid 切到 flex，UpdateBanner 在 idle 时返回 null 不会再让 1fr 落到错的子元素上；SessionPanel 用 display:none 隐藏非激活页签从而保留内部状态。
+
 v1.3.4
 -------
 - 修复：菜单栏"文件 → 退出"无效。原实现走的是 `window.close()`，按 HTML 规范这只能关掉由 JS（`window.open()`）打开的窗口，对 Tauri 的主窗口（由 Rust 侧创建）会被 WebView 静默忽略；即便能关窗，也只关一个窗口、不会退出 runtime/SSH 同步任务/HubClient 这些后台资源。改为通过 `@tauri-apps/plugin-process` 的 `exit(0)` 让 Rust 侧把所有窗口关掉、清理后台、再以 0 状态码终止整个进程。同时在 capabilities/default.json 加 `process:default` 权限，否则前端调用会被 Tauri 权限系统拦截报 Unauthorized。

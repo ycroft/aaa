@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ProviderInfo, RemoteCacheInfo, RemoteHostInfo, RemoteProviderInfo } from "../types";
 import { shortPath } from "../format";
 import { api } from "../api";
-import { useT } from "../i18n";
+import { useT, type TKey } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -18,6 +18,13 @@ interface Props {
   closable?: boolean;
 }
 
+type SourceTab = "personal" | "team";
+
+const TAB_KEYS: Record<SourceTab, { label: TKey; hint: TKey }> = {
+  personal: { label: "splash.tab_personal", hint: "splash.tab_personal_hint" },
+  team: { label: "splash.tab_team", hint: "splash.tab_team_hint" },
+};
+
 export function ProviderSplash({
   open,
   providers,
@@ -31,9 +38,13 @@ export function ProviderSplash({
   closable,
 }: Props) {
   const t = useT();
+  const [tab, setTab] = useState<SourceTab>("personal");
   if (!open) return null;
   return (
-    <div className="overlay" onMouseDown={(e) => closable && e.target === e.currentTarget && onClose?.()}>
+    <div
+      className="overlay"
+      onMouseDown={(e) => closable && e.target === e.currentTarget && onClose?.()}
+    >
       <div className="splash">
         <div className="panel" data-hint={t("splash.panel_hint")}>
           <h1>{t("splash.title")}</h1>
@@ -43,70 +54,35 @@ export function ProviderSplash({
             <span style={{ color: "var(--text-3)" }}>{t("splash.lead_suffix")}</span>
           </p>
 
-          <h3 style={{ marginTop: 4, marginBottom: 8, fontSize: 13, color: "var(--text-2)" }}>{t("splash.local")}</h3>
-          <div className="provider-grid">
-            {providers.map((p) => {
-              const tag = !p.is_implemented
-                ? <span className="tag todo">{t("splash.tag_coming_soon")}</span>
-                : p.root_exists
-                  ? <span className="tag ok">{t("splash.tag_ready")}</span>
-                  : <span className="tag miss">{t("splash.tag_no_data")}</span>;
-              const canPick = p.is_implemented;
-              return (
-                <div
-                  key={p.id}
-                  className={`provider-card${canPick ? "" : " disabled"}`}
-                  data-hint={canPick
-                    ? t("splash.use_provider_hint", { name: p.display_name, root: p.default_root ?? t("splash.no_path") })
-                    : t("splash.not_implemented_hint", { name: p.display_name })}
-                  onClick={() => canPick && onPick(p)}
-                >
-                  <div className="pname">
-                    <span>{p.display_name}</span>
-                    {tag}
-                  </div>
-                  <div className="root">{shortPath(p.default_root, 96)}</div>
-                  {canPick && (
-                    <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                      <button
-                        className="btn primary"
-                        onClick={(e) => { e.stopPropagation(); onPick(p); }}
-                        data-hint={t("splash.pick_default_hint")}
-                      >
-                        {t("splash.pick_default")}
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={(e) => { e.stopPropagation(); onCustom(p); }}
-                        data-hint={t("splash.pick_custom_hint")}
-                      >
-                        {t("splash.pick_custom")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="splash-tabs" role="tablist">
+            {(Object.keys(TAB_KEYS) as SourceTab[]).map((key) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                className={`splash-tab${tab === key ? " active" : ""}`}
+                onClick={() => setTab(key)}
+                data-hint={t(TAB_KEYS[key].hint)}
+              >
+                {t(TAB_KEYS[key].label)}
+              </button>
+            ))}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, marginBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 13, color: "var(--text-2)" }}>{t("splash.remote")}</h3>
-            <button className="btn" onClick={onAddRemote} data-hint={t("splash.add_manage_hint")}>{t("splash.add_manage")}</button>
+          <div className="splash-tab-body">
+            {tab === "personal" && (
+              <PersonalSourcesTab
+                providers={providers}
+                remotes={remotes}
+                onPick={onPick}
+                onCustom={onCustom}
+                onPickRemote={onPickRemote}
+                onPickRemoteCache={onPickRemoteCache}
+                onAddRemote={onAddRemote}
+              />
+            )}
+            {tab === "team" && <TeamSourcesTab />}
           </div>
-          {remotes.length === 0 && (
-            <div className="help" style={{ marginBottom: 12 }}>
-              {t("splash.no_remotes")}
-            </div>
-          )}
-          {remotes.map((r) => (
-            <RemoteRow
-              key={r.id}
-              remote={r}
-              providers={providers}
-              onPick={(pid) => onPickRemote(r, pid)}
-              onPickCache={(pid, localRoot) => onPickRemoteCache(r, pid, localRoot)}
-            />
-          ))}
 
           <div className="actions">
             <div className="grow" />
@@ -119,6 +95,133 @@ export function ProviderSplash({
     </div>
   );
 }
+
+// ============================================================================
+//  Personal sources — local providers above, remote hosts below (scrollable).
+// ============================================================================
+
+interface PersonalProps {
+  providers: ProviderInfo[];
+  remotes: RemoteHostInfo[];
+  onPick: (p: ProviderInfo, customRoot?: string) => void;
+  onCustom: (p: ProviderInfo) => void;
+  onPickRemote: (remote: RemoteHostInfo, providerId: string) => void;
+  onPickRemoteCache: (remote: RemoteHostInfo, providerId: string, localRoot: string) => void;
+  onAddRemote: () => void;
+}
+
+function PersonalSourcesTab({
+  providers,
+  remotes,
+  onPick,
+  onCustom,
+  onPickRemote,
+  onPickRemoteCache,
+  onAddRemote,
+}: PersonalProps) {
+  const t = useT();
+  return (
+    <div className="splash-personal">
+      <h3 className="splash-section-heading">{t("splash.local")}</h3>
+      <div className="provider-grid">
+        {providers.map((p) => {
+          const tag = !p.is_implemented
+            ? <span className="tag todo">{t("splash.tag_coming_soon")}</span>
+            : p.root_exists
+              ? <span className="tag ok">{t("splash.tag_ready")}</span>
+              : <span className="tag miss">{t("splash.tag_no_data")}</span>;
+          const canPick = p.is_implemented;
+          return (
+            <div
+              key={p.id}
+              className={`provider-card${canPick ? "" : " disabled"}`}
+              data-hint={canPick
+                ? t("splash.use_provider_hint", { name: p.display_name, root: p.default_root ?? t("splash.no_path") })
+                : t("splash.not_implemented_hint", { name: p.display_name })}
+              onClick={() => canPick && onPick(p)}
+            >
+              <div className="pname">
+                <span>{p.display_name}</span>
+                {tag}
+              </div>
+              <div className="root">{shortPath(p.default_root, 96)}</div>
+              {canPick && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                  <button
+                    className="btn primary"
+                    onClick={(e) => { e.stopPropagation(); onPick(p); }}
+                    data-hint={t("splash.pick_default_hint")}
+                  >
+                    {t("splash.pick_default")}
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={(e) => { e.stopPropagation(); onCustom(p); }}
+                    data-hint={t("splash.pick_custom_hint")}
+                  >
+                    {t("splash.pick_custom")}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="splash-remote-head">
+        <h3 className="splash-section-heading">{t("splash.remote")}</h3>
+        <button className="btn" onClick={onAddRemote} data-hint={t("splash.add_manage_hint")}>
+          {t("splash.add_manage")}
+        </button>
+      </div>
+      {/* Constrain remote-host height so heavy remote setups (10+ hosts) get a
+          local scrollbar instead of forcing the whole splash to scroll, which
+          would push the local provider grid out of view. */}
+      <div className="splash-remote-list">
+        {remotes.length === 0 && (
+          <div className="help">{t("splash.no_remotes")}</div>
+        )}
+        {remotes.map((r) => (
+          <RemoteRow
+            key={r.id}
+            remote={r}
+            providers={providers}
+            onPick={(pid) => onPickRemote(r, pid)}
+            onPickCache={(pid, localRoot) => onPickRemoteCache(r, pid, localRoot)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+//  Team sources — placeholder until the team experience ships.
+// ============================================================================
+
+function TeamSourcesTab() {
+  const t = useT();
+  return (
+    <div className="splash-team">
+      <div className="splash-team-card">
+        <div className="splash-team-icon" aria-hidden="true">👥</div>
+        <h3>{t("splash.team_title")}</h3>
+        <p className="lead">{t("splash.team_lead")}</p>
+        <ul className="splash-team-roadmap">
+          <li>{t("splash.team_roadmap_overview")}</li>
+          <li>{t("splash.team_roadmap_drilldown")}</li>
+          <li>{t("splash.team_roadmap_admin")}</li>
+        </ul>
+        <div className="splash-team-tag">{t("splash.team_dev_notice")}</div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+//  Remote-host row — same as the previous implementation, lifted verbatim so
+//  splitting the splash into tabs doesn't change behaviour.
+// ============================================================================
 
 function RemoteRow({
   remote,
@@ -150,7 +253,7 @@ function RemoteRow({
     try {
       const r = await api.remoteProbe(remote.id);
       setProbed(r);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setErr(String(e));
     } finally {
       setProbing(false);
@@ -159,10 +262,7 @@ function RemoteRow({
   }
 
   return (
-    <div
-      className="provider-card"
-      style={{ marginBottom: 8 }}
-    >
+    <div className="provider-card" style={{ marginBottom: 8 }}>
       <div
         onClick={expanded ? () => setExpanded(false) : () => void expand()}
         style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
