@@ -321,6 +321,48 @@ cd tools\aaa
 
 portable zip 内含 `bin\aaa.exe` + 图标 + 自包含 `install.ps1`/`install.cmd`，同事不需要装 Rust/Node，但若是老 Win10 需要先装一次 WebView2 Runtime。
 
+### Windows · 发布到 GitHub Release
+
+**触发：等用户明确指令才发布。** 每次代码改动都要 bump 版本号（见 [提交约束](#提交约束重要)），但**版本号 bump ≠ 自动发布**。GitHub Release 是面向同事的对外分发渠道，必须由用户显式说"发布 vX.Y.Z"或"把当前版本发出去"才走这个流程。中间多个 patch/minor commit 累计后再一次性发布是常态。
+
+**Release notes 用英文，且要累计。** `release-notes.txt` 仓库内是中文（About 对话框直接展示），但 GitHub Release 的 body 一律翻成英文。每次发布的 body **必须包含从上次已发布 GitHub Release 之后的所有版本块**——不只是当前 HEAD 那一版。例如上一次发布是 v1.3.0，本次发布 v1.4.2，那 body 里要按从新到旧的顺序包含 v1.4.2 / v1.4.1 / v1.4.0 / v1.3.4 / v1.3.3 / v1.3.2 / v1.3.1 七个版本块（v1.3.0 不含），都翻成英文。
+
+**产物：** MSI + NSIS 两个安装包都传，同事按习惯挑一个用。
+
+**步骤**（假设当前版本 `<ver>`，已 commit + push 到 master）：
+
+```bash
+# 1. 确定上一次已发布的 release tag（用来界定 release notes 的累计范围）
+gh release list --limit 5
+
+# 2. 从 release-notes.txt 截取 (last_published, current] 范围内的所有版本块，翻译成英文，
+#    写到 target/release-notes-v<ver>.md（参考已有 release 的格式：
+#    每个版本一段 ## vX.Y.Z 标题 + bullet 列表，末尾加一段 ### Install 表格）。
+#    target/ 已被 .gitignore 覆盖，不要提交。
+
+# 3. 构建（约 2-3 分钟，已 vendor 上游产物，离线可用）
+.\scripts\build-release.ps1
+
+# 4. 打 tag 并推送（基于 master HEAD，必须与已 push 的版本号 commit 一致）
+git tag -a v<ver> -m "v<ver>"
+git push origin v<ver>
+
+# 5. 创建 release 并上传两个安装包
+gh release create v<ver> \
+  --title "v<ver>" \
+  --notes-file target/release-notes-v<ver>.md \
+  "target/release/bundle/msi/AAA_<ver>_x64_en-US.msi" \
+  "target/release/bundle/nsis/AAA_<ver>_x64-setup.exe"
+```
+
+**注意事项：**
+
+- 打 tag 前先 `git fetch origin master && git log -1 origin/master` 确认远端 HEAD 跟本地一致——版本号 bump 的 commit 必须已 push，否则 tag 指向的 commit 在远端不存在。
+- 不要用 `--notes-file release-notes.txt`：那会把全部历史 notes 都贴进 release body，且语言是中文。一定要走"截取 + 翻译"这步。
+- `gh auth status` 不通时让用户 `gh auth login`，需要 `repo` scope；这一步不要自动跑，登录是交互式的。
+- 不要给 release 打 `--draft` 或 `--prerelease`，除非用户明确要求。
+- 发布后用 `gh release view v<ver>` 抽查：title / assets / body 三项都对再算完。
+
 ### 脚本一览
 
 | 脚本 | 用途 |
