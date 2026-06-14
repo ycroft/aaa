@@ -114,7 +114,7 @@ tarball / zip packaging, and the offline-build vendor cache layout.
 | Shortcut         | Action                                              |
 | ---------------- | --------------------------------------------------- |
 | `Ctrl+,`         | Open settings                                       |
-| `Ctrl+Shift+P`   | Switch backend (provider splash)                    |
+| `Ctrl+Shift+P`   | Open data source (provider splash)                  |
 | `Ctrl+F`         | Focus in-session message search                     |
 | `Ctrl+Alt+F`     | Focus the session-list filter                       |
 | `Ctrl+E`         | Toggle expand-all for the timeline                  |

@@ -72,7 +72,7 @@ interface Props {
   settings: AppSettings;
   hubConnected: boolean;
   onMetaChange: (snapshot: SessionPanelSnapshot) => void;
-  onSwitchBackend: () => void;
+  onOpenSource: () => void;
   onSettings: () => void;
   onAiAnalysis: () => void;
   onFeedback: () => void;
@@ -87,7 +87,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     settings,
     hubConnected,
     onMetaChange,
-    onSwitchBackend,
+    onOpenSource,
     onSettings,
     onAiAnalysis,
     onFeedback,
@@ -252,7 +252,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
         onExpandAll={() => setExpandAll(true)}
         onCollapseAll={() => setExpandAll(false)}
         expandAll={expandAll}
-        onSwitchBackend={onSwitchBackend}
+        onOpenSource={onOpenSource}
         onSettings={onSettings}
         rootLabel={rootLabel}
         onExport={() => void handleExport()}

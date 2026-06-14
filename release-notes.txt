@@ -1,3 +1,7 @@
+v1.4.2
+-------
+- 改动：把所有"切换后端 / Switch backend"文案统一改成"打开数据源 / Open data source"。原标签来自单数据源时代的"切到另一个 backend"语义，多页签后真实动作是"添加一个新数据源页签"。涉及：菜单栏 文件 → 切换后端…、Splash 引导文案、README 快捷键表，以及代码内的 prop（`onSwitchBackend` → `onOpenSource`）和 i18n key（`menu.switch_backend*` → `menu.open_source*`）；旧的 `toolbar.switch_backend_hint` 已移除。
+
 v1.4.1
 -------
 - 改动：工具栏第一个按钮原本显示"▣ {provider 名}"（多页签后这一信息已经在 TabBar 上重复显示），改成简洁的"打开数据源"标签——按钮职责本来就是"打开/切换数据源"，去掉 provider 名让标签和职责对得上，也省下了一段横向空间。Toolbar 接口同步移除 providerLabel prop。

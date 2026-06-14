@@ -469,9 +469,9 @@ function AppInner() {
         accelerator: "F",
         items: [
           {
-            label: t("menu.switch_backend"),
+            label: t("menu.open_source"),
             shortcut: "Ctrl+Shift+P",
-            hint: t("menu.switch_backend_hint"),
+            hint: t("menu.open_source_hint"),
             onClick: () => setSplashOpen(true),
           },
           {
@@ -604,7 +604,7 @@ function AppInner() {
               settings={settings}
               hubConnected={hubConnected}
               onMetaChange={(snap) => onPanelSnapshot(p.id, snap)}
-              onSwitchBackend={() => setSplashOpen(true)}
+              onOpenSource={() => setSplashOpen(true)}
               onSettings={() => setSettingsOpen(true)}
               onAiAnalysis={() => setAiAnalysisOpen(true)}
               onFeedback={() => setFeedbackOpen(true)}

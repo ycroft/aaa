@@ -11,7 +11,7 @@ interface Props {
   onExpandAll: () => void;
   onCollapseAll: () => void;
   expandAll: boolean;
-  onSwitchBackend: () => void;
+  onOpenSource: () => void;
   onSettings: () => void;
   rootLabel: string;
   onExport: () => void;
@@ -30,7 +30,7 @@ export function Toolbar({
   onExpandAll,
   onCollapseAll,
   expandAll,
-  onSwitchBackend,
+  onOpenSource,
   onSettings,
   rootLabel,
   onExport,
@@ -79,7 +79,7 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="group">
-        <button className="tbtn" onClick={onSwitchBackend} data-hint={t("toolbar.open_source_hint")}>
+        <button className="tbtn" onClick={onOpenSource} data-hint={t("toolbar.open_source_hint")}>
           {t("toolbar.open_source")}
         </button>
         <button className="tbtn" onClick={onRefresh} data-hint={t("toolbar.refresh_hint")}>
