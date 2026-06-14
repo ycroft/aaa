@@ -240,7 +240,6 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     onMetaChange(snapshot);
   }, [snapshot, onMetaChange]);
 
-  const providerLabel = backend.provider.display_name;
   const rootLabel = shortPath(backend.root, 60);
 
   return (
@@ -255,7 +254,6 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
         expandAll={expandAll}
         onSwitchBackend={onSwitchBackend}
         onSettings={onSettings}
-        providerLabel={providerLabel}
         rootLabel={rootLabel}
         onExport={() => void handleExport()}
         canExport={canExport}

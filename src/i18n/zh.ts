@@ -37,6 +37,8 @@ export const zh = {
   },
   toolbar: {
     switch_backend_hint: "切换后端 (Ctrl+Shift+P)",
+    open_source: "打开数据源",
+    open_source_hint: "打开数据源 (Ctrl+Shift+P)",
     refresh: "刷新",
     refresh_hint: "从磁盘重新加载会话 (F5)",
     expand_all: "▸ 全部展开",

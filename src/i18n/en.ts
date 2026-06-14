@@ -39,6 +39,8 @@ export const en: Catalog = {
   },
   toolbar: {
     switch_backend_hint: "Switch backend (Ctrl+Shift+P)",
+    open_source: "Open source",
+    open_source_hint: "Open a data source (Ctrl+Shift+P)",
     refresh: "Refresh",
     refresh_hint: "Reload sessions from disk (F5)",
     expand_all: "▸ Expand all",

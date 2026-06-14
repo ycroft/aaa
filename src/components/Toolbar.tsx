@@ -13,7 +13,6 @@ interface Props {
   expandAll: boolean;
   onSwitchBackend: () => void;
   onSettings: () => void;
-  providerLabel: string;
   rootLabel: string;
   onExport: () => void;
   canExport: boolean;
@@ -33,7 +32,6 @@ export function Toolbar({
   expandAll,
   onSwitchBackend,
   onSettings,
-  providerLabel,
   rootLabel,
   onExport,
   canExport,
@@ -81,8 +79,8 @@ export function Toolbar({
   return (
     <div className="toolbar">
       <div className="group">
-        <button className="tbtn" onClick={onSwitchBackend} data-hint={t("toolbar.switch_backend_hint")}>
-          ▣ {providerLabel}
+        <button className="tbtn" onClick={onSwitchBackend} data-hint={t("toolbar.open_source_hint")}>
+          {t("toolbar.open_source")}
         </button>
         <button className="tbtn" onClick={onRefresh} data-hint={t("toolbar.refresh_hint")}>
           ⟳ {t("toolbar.refresh")}

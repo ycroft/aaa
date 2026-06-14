@@ -1,3 +1,7 @@
+v1.4.1
+-------
+- 改动：工具栏第一个按钮原本显示"▣ {provider 名}"（多页签后这一信息已经在 TabBar 上重复显示），改成简洁的"打开数据源"标签——按钮职责本来就是"打开/切换数据源"，去掉 provider 名让标签和职责对得上，也省下了一段横向空间。Toolbar 接口同步移除 providerLabel prop。
+
 v1.4.0
 -------
 - 重构：把"当前数据源"相关的全部状态（active backend / sessions / activeSession / filter / expandAll / counts / loadingSession / exporting / error / status）从 App.tsx 抽到新组件 SessionPanel，App 层只保留全局状态（providers / settings / remotes / hubConnected / 对话框开关 / panels 列表 + activeId）。SessionPanel 通过 onMetaChange 把当前快照（SessionPanelSnapshot）推到 App 层供状态栏 / AI 分析对话框 / 菜单可用性使用，又通过 useImperativeHandle 暴露 refresh / toggleExpandAll / exportSession / focusSessionSearch / focusMessageSearch 给 App 层的全局快捷键调用——只触达当前激活面板，隐藏面板的 input/timeline 不会被误聚焦。
