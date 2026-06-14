@@ -8,6 +8,10 @@ interface Props {
   filter: SessionFilter;
   activeId: string | null;
   onPick: (s: SessionSummary) => void;
+  /** True while the parent panel is scanning the data source. We use this to
+   *  show a "scanning…" spinner instead of the "no matches" empty text on the
+   *  first open of a large source — list_sessions can take 1-2s on big logs. */
+  busy: boolean;
 }
 
 // Convert filter.timePreset (+ custom range) to an absolute [from, to] window in ms.
@@ -37,7 +41,7 @@ function resolveTimeWindow(filter: SessionFilter): { from: number | null; to: nu
   }
 }
 
-export function SessionList({ sessions, filter, activeId, onPick }: Props) {
+export function SessionList({ sessions, filter, activeId, onPick, busy }: Props) {
   const t = useT();
   const filtered = useMemo(() => {
     const f = filter.search.trim().toLowerCase();
@@ -75,11 +79,16 @@ export function SessionList({ sessions, filter, activeId, onPick }: Props) {
         <span className="count">{filtered.length}/{sessions.length}</span>
       </div>
       <div className="sb-list">
-        {filtered.length === 0 && (
+        {busy && sessions.length === 0 ? (
+          <div className="sb-loading">
+            <div className="sb-loading-spinner" aria-hidden="true" />
+            <div className="sb-loading-text">{t("session_list.scanning")}</div>
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ padding: 18, color: "var(--text-3)", fontSize: 12 }}>
             {t("session_list.empty")}
           </div>
-        )}
+        ) : null}
         {filtered.map((s) => (
           <div
             key={s.source_path}

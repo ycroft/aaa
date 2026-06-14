@@ -341,6 +341,7 @@ export const zh = {
   session_list: {
     heading: "会话",
     empty: "没有匹配该筛选条件的会话。",
+    scanning: "扫描会话中…",
     open_hint: "打开会话 {id}",
     msgs_pill: "{n} 条消息",
     peak_ctx: "ctx {tokens}",

@@ -279,6 +279,34 @@ button { font-family: inherit; }
   overflow: auto;
 }
 
+/* First-load scanning state for the session list. Sits in place of the empty
+ * hint while list_sessions is in flight on a fresh open — visible feedback
+ * for sources large enough that the scan takes a noticeable moment. */
+.sb-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 18px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.sb-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-1);
+  border-top-color: var(--accent);
+  animation: aaa-spin 0.9s linear infinite;
+}
+.sb-loading-text {
+  font-variant-numeric: tabular-nums;
+}
+@keyframes aaa-spin {
+  to { transform: rotate(360deg); }
+}
+
 .session-row {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-1);

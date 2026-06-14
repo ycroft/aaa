@@ -274,6 +274,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
           filter={filter}
           activeId={activePath}
           onPick={(s) => void onSelectSession(s)}
+          busy={busy}
         />
         <SessionViewer
           session={activeSession}

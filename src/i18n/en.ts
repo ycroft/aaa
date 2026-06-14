@@ -343,6 +343,7 @@ export const en: Catalog = {
   session_list: {
     heading: "Sessions",
     empty: "No sessions match this filter.",
+    scanning: "Scanning sessions…",
     open_hint: "Open session {id}",
     msgs_pill: "{n} msgs",
     peak_ctx: "ctx {tokens}",
