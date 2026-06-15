@@ -505,6 +505,7 @@ export const en: Catalog = {
     relative_minutes: "{n}m ago",
     relative_hours: "{n}h ago",
     relative_days: "{n}d ago",
+    opencode_compat_suffix: " (compatible with nga ≤ 2.0)",
   },
 };
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ProviderInfo, RemoteCacheInfo, RemoteHostInfo, RemoteProviderInfo } from "../types";
-import { shortPath } from "../format";
+import { shortPath, providerLabel } from "../format";
 import { api } from "../api";
 import { useT, type TKey } from "../i18n";
 
@@ -136,12 +136,12 @@ function PersonalSourcesTab({
               key={p.id}
               className={`provider-card${canPick ? "" : " disabled"}`}
               data-hint={canPick
-                ? t("splash.use_provider_hint", { name: p.display_name, root: p.default_root ?? t("splash.no_path") })
-                : t("splash.not_implemented_hint", { name: p.display_name })}
+                ? t("splash.use_provider_hint", { name: providerLabel(p, t), root: p.default_root ?? t("splash.no_path") })
+                : t("splash.not_implemented_hint", { name: providerLabel(p, t) })}
               onClick={() => canPick && onPick(p)}
             >
               <div className="pname">
-                <span>{p.display_name}</span>
+                <span>{providerLabel(p, t)}</span>
                 {tag}
               </div>
               <div className="root">{shortPath(p.default_root, 96)}</div>
@@ -290,7 +290,7 @@ function RemoteRow({
                   ? t("splash.backend_not_implemented")
                   : !rp.exists
                   ? t("splash.no_log_dir")
-                  : t("splash.connect_and_resync", { label: remote.label, provider: provider.display_name });
+                  : t("splash.connect_and_resync", { label: remote.label, provider: providerLabel(provider, t) });
                 const cacheUsable = !!cache && provider.is_implemented;
                 const cacheTitle = cache
                   ? t("splash.open_cached_snapshot", { size: formatBytes(cache.size_bytes) }) +
@@ -299,7 +299,7 @@ function RemoteRow({
                 return (
                   <div key={rp.provider_id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ minWidth: 100, color: "var(--text-2)" }}>
-                      {provider.display_name}
+                      {providerLabel(provider, t)}
                       {!provider.is_implemented && t("splash.stub_suffix")}
                     </span>
                     <button

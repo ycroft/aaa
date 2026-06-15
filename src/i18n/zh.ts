@@ -503,6 +503,7 @@ export const zh = {
     relative_minutes: "{n} 分钟前",
     relative_hours: "{n} 小时前",
     relative_days: "{n} 天前",
+    opencode_compat_suffix: "（兼容 nga ≤ 2.0）",
   },
 } as const;
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import type { ProviderInfo, RemoteHostInfo, RemoteHostInput } from "../types";
 import { useT } from "../i18n";
+import { providerLabel } from "../format";
 
 interface Props {
   initial: RemoteHostInfo | null;
@@ -193,7 +194,7 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
       </div>
       {showOverrides && providers.map((p) => (
         <div className="field" key={p.id}>
-          <label style={{ paddingLeft: 16 }}>{p.display_name}</label>
+          <label style={{ paddingLeft: 16 }}>{providerLabel(p, t)}</label>
           <input
             value={draft.provider_root_overrides[p.id] ?? ""}
             onChange={(e) => setOverride(p.id, e.target.value)}

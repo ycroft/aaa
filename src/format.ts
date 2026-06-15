@@ -2,6 +2,22 @@
 
 type T = (key: any, vars?: Record<string, string | number>) => string;
 
+/**
+ * Provider display label with locale-aware suffixes injected on the frontend.
+ * Backend `display_name` stays language-neutral; UI sites render through this
+ * helper so suffixes (e.g. opencode's nga-compat note) localize with the user's
+ * language preference instead of being baked into the binary.
+ */
+export function providerLabel(
+  p: { id: string; display_name: string },
+  t: T,
+): string {
+  if (p.id === "opencode") {
+    return p.display_name + t("format.opencode_compat_suffix");
+  }
+  return p.display_name;
+}
+
 export function formatTokens(n: number | null | undefined): string {
   if (n == null) return "—";
   if (n < 1000) return String(n);

@@ -1,3 +1,7 @@
+v1.4.6
+-------
+- 修复：opencode provider 的"兼容 nga ≤ 2.0"后缀此前直接写死在 Rust 端的 `display_name()` 里，导致英文界面下也显示中文"兼容"。改为前端 i18n：`core/src/providers/opencode.rs::display_name()` 退回为纯 `"opencode"`，后缀拆到 `format.opencode_compat_suffix` 翻译键（zh：`（兼容 nga ≤ 2.0）`，en：` (compatible with nga ≤ 2.0)`），新增 `src/format.ts::providerLabel(p, t)` 统一拼装。所有 8 个 provider 显示点（设置 / Splash 三处 / 远程编辑器 / App 标题 / 状态栏 / 远程进度对话框）改走该 helper。
+
 v1.4.5
 -------
 - 文案：opencode provider 的 display_name 从 "opencode" 改为 "opencode (兼容 nga <= 2.0)"，给所有 UI 显示点（设置 / Splash / 远程编辑器 / 窗口标题 / 状态栏 / 远程进度对话框）统一加上后缀。改动只在 `core/src/providers/opencode.rs::display_name()` 一处——前端从 `ProviderInfo.display_name` 读，全部联动。

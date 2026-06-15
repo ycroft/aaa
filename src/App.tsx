@@ -19,6 +19,7 @@ import { ProviderSplash } from "./components/ProviderSplash";
 import { RemoteProgressDialog } from "./components/RemoteProgressDialog";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
+import { providerLabel } from "./format";
 import {
   SessionPanel,
   type ActiveBackend,
@@ -206,13 +207,13 @@ function AppInner() {
     (active: ActiveBackend) => {
       addOrFocusPanel({
         identity: panelIdentity(active),
-        title: active.provider.display_name,
+        title: providerLabel(active.provider, t),
         subtitle: active.remote ? `↗ ${active.remote.label}` : null,
         icon: active.remote ? "↗" : "▣",
         backend: active,
       });
     },
-    [addOrFocusPanel],
+    [addOrFocusPanel, t],
   );
 
   // When settings change a local provider's root override, propagate it to
@@ -570,8 +571,8 @@ function AppInner() {
   );
 
   // ---- Status bar source ---------------------------------------------------
-  const providerLabel =
-    activeSnapshot?.active.provider.display_name ?? t("format.em_dash");
+  const providerLabelText =
+    activeSnapshot ? providerLabel(activeSnapshot.active.provider, t) : t("format.em_dash");
   const remoteLabel = activeSnapshot?.active.remote?.label ?? null;
   const status = activeSnapshot?.status ?? t("status.ready");
   const busy = activeSnapshot?.busy ?? false;
@@ -615,7 +616,7 @@ function AppInner() {
       </div>
       <StatusBar
         hint={hint}
-        providerLabel={providerLabel}
+        providerLabel={providerLabelText}
         remoteLabel={remoteLabel}
         sessionCount={sessionCount}
         expandedNodes={counts.expandedNodes}
@@ -672,7 +673,7 @@ function AppInner() {
         remoteId={pendingRemote?.remote.id ?? ""}
         providerId={pendingRemote?.provider.id ?? ""}
         remoteLabel={pendingRemote?.remote.label ?? ""}
-        providerLabel={pendingRemote?.provider.display_name ?? ""}
+        providerLabel={pendingRemote ? providerLabel(pendingRemote.provider, t) : ""}
         onSuccess={onRemoteOpenSuccess}
         onCancelled={onRemoteOpenCancelled}
         onError={onRemoteOpenError}

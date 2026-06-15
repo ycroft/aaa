@@ -13,6 +13,7 @@ import { api } from "../api";
 import { RemoteEditor } from "./RemoteEditor";
 import { FeedbackList } from "./FeedbackList";
 import { useT, type TKey } from "../i18n";
+import { providerLabel } from "../format";
 
 interface Props {
   open: boolean;
@@ -155,7 +156,7 @@ export function SettingsDialog({
             <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.backends.heading")}</h3>
             {providers.map((p) => (
               <div className="field" key={p.id}>
-                <label>{p.display_name}</label>
+                <label>{providerLabel(p, t)}</label>
                 <div className="row">
                   <input
                     value={draft.provider_roots[p.id] ?? p.default_root ?? ""}
