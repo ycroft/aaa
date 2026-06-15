@@ -1,0 +1,12 @@
+[package]
+name = "aaa-wire"
+version = "0.1.0"
+edition = "2021"
+description = "Wire schema shared between aaa desktop client and aaa-hub server. Forward-compatible JSON DTOs."
+
+[lib]
+name = "aaa_wire"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
