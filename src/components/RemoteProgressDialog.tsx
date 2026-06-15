@@ -31,6 +31,10 @@ const PHASE_KEYS: Record<SyncPhase, TKey> = {
   downloading: "remote_progress.phase.downloading",
   cleaning: "remote_progress.phase.cleaning",
   done: "remote_progress.phase.done",
+  up_to_date: "remote_progress.phase.up_to_date",
+  probing_remote: "remote_progress.phase.probing_remote",
+  incremental_query: "remote_progress.phase.incremental_query",
+  incremental_apply: "remote_progress.phase.incremental_apply",
 };
 
 const INITIAL: SyncProgress = {
@@ -108,7 +112,13 @@ export function RemoteProgressDialog({
   }, [startKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pct = useMemo(() => {
-    if (progress.phase === "done") return 100;
+    if (progress.phase === "done" || progress.phase === "up_to_date") return 100;
+    if (progress.phase === "incremental_query" || progress.phase === "incremental_apply") {
+      if (progress.files_total > 0) {
+        return Math.min(100, Math.round((progress.files_done / progress.files_total) * 100));
+      }
+      return null;
+    }
     if (progress.phase !== "downloading") return null;
     if (progress.bytes_total > 0) {
       return Math.min(100, Math.round((progress.bytes_done / progress.bytes_total) * 100));

@@ -72,6 +72,10 @@ impl SessionProvider for OpencodeProvider {
         ])
     }
 
+    fn remote_sync_strategy(&self) -> crate::providers::RemoteSyncStrategy {
+        crate::providers::RemoteSyncStrategy::OpencodeIncremental
+    }
+
     fn list_sessions(&self, root: &PathBuf) -> Result<Vec<SessionSummary>> {
         let dbs = find_dbs(root);
         info!(

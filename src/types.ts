@@ -286,7 +286,11 @@ export type SyncPhase =
   | "listing"
   | "downloading"
   | "cleaning"
-  | "done";
+  | "done"
+  | "up_to_date"
+  | "probing_remote"
+  | "incremental_query"
+  | "incremental_apply";
 
 export interface SyncProgress {
   phase: SyncPhase;

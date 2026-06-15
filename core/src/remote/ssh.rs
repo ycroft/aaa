@@ -227,4 +227,84 @@ impl RemoteFs for RemoteSession {
         std::fs::write(local, &buf)?;
         Ok(buf.len() as u64)
     }
+
+    async fn exec(
+        &mut self,
+        argv: &[&str],
+        stdin: &[u8],
+        max_stdout: u64,
+    ) -> Result<Vec<u8>, RemoteError> {
+        // russh's exec channel takes a single command string. We single-quote
+        // every argv element (and escape embedded single quotes) so the remote
+        // shell receives a flat token list — argv is never parsed for shell
+        // metacharacters.
+        fn shquote(s: &str) -> String {
+            let escaped = s.replace('\'', r"'\''");
+            format!("'{}'", escaped)
+        }
+        let cmd = argv.iter().map(|a| shquote(a)).collect::<Vec<_>>().join(" ");
+
+        let mut channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| RemoteError::Connect(e.to_string()))?;
+        channel
+            .exec(false, cmd.clone())
+            .await
+            .map_err(|e| RemoteError::Connect(e.to_string()))?;
+        if !stdin.is_empty() {
+            channel
+                .data(stdin)
+                .await
+                .map_err(|e| RemoteError::Sftp(e.to_string()))?;
+        }
+        channel
+            .eof()
+            .await
+            .map_err(|e| RemoteError::Sftp(e.to_string()))?;
+
+        let mut stdout: Vec<u8> = Vec::new();
+        let mut stderr: Vec<u8> = Vec::new();
+        let mut exit_code: Option<i32> = None;
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { ref data } => {
+                    if (stdout.len() as u64) + (data.len() as u64) > max_stdout {
+                        warn!(
+                            "ssh exec stdout exceeded cap {} bytes for cmd: {}",
+                            max_stdout, cmd
+                        );
+                        return Err(RemoteError::Exec {
+                            code: -1,
+                            stderr: format!("stdout exceeded {} bytes", max_stdout),
+                        });
+                    }
+                    stdout.extend_from_slice(data);
+                }
+                ChannelMsg::ExtendedData { ref data, .. } => stderr.extend_from_slice(data),
+                ChannelMsg::ExitStatus { exit_status } => exit_code = Some(exit_status as i32),
+                ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        let stderr_str = String::from_utf8_lossy(&stderr).into_owned();
+        match exit_code {
+            Some(0) => Ok(stdout),
+            Some(code) => {
+                warn!(
+                    "ssh exec exit {}: {} stderr={}",
+                    code, cmd, stderr_str
+                );
+                Err(RemoteError::Exec {
+                    code,
+                    stderr: stderr_str,
+                })
+            }
+            None => Err(RemoteError::Exec {
+                code: -1,
+                stderr: format!("no exit status from remote; stderr={}", stderr_str),
+            }),
+        }
+    }
 }

@@ -271,6 +271,10 @@ export const en: Catalog = {
       downloading: "Syncing files…",
       cleaning: "Cleaning up local cache…",
       done: "Done.",
+      up_to_date: "No changes on remote",
+      probing_remote: "Probing remote capabilities…",
+      incremental_query: "Fetching incremental data…",
+      incremental_apply: "Applying to local cache…",
     },
   },
   about: {

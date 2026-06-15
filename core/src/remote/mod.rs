@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+pub mod incremental;
 pub mod known_hosts;
 pub mod mirror;
 pub mod probe;
@@ -109,6 +110,8 @@ pub enum RemoteError {
     InvalidPath(String),
     #[error("CONFIG:{0}")]
     Config(String),
+    #[error("EXEC:code={code}:{stderr}")]
+    Exec { code: i32, stderr: String },
     #[error("CANCELLED")]
     Cancelled,
 }
@@ -143,6 +146,14 @@ pub enum SyncPhase {
     Downloading,
     Cleaning,
     Done,
+    /// All whitelisted files match local (size, mtime); skip everything.
+    UpToDate,
+    /// Running `command -v sqlite3` on the remote to decide L1 vs L3.
+    ProbingRemote,
+    /// Streaming SQL query results from the remote sqlite3 process.
+    IncrementalQuery,
+    /// Applying queried rows into the local cache db inside a transaction.
+    IncrementalApply,
 }
 
 /// Snapshot the UI uses to render a progress bar / step indicator.
@@ -206,6 +217,27 @@ pub trait RemoteFs: Send {
     async fn metadata(&mut self, path: &str) -> Result<FileMeta, RemoteError>;
     async fn read_dir(&mut self, path: &str) -> Result<Vec<DirEntry>, RemoteError>;
     async fn download(&mut self, remote: &str, local: &std::path::Path) -> Result<u64, RemoteError>;
+
+    /// Run a command on the remote with the given argv (no shell parsing of argv
+    /// elements — they are quoted for `sh -c` then passed as a single command
+    /// string to the SSH exec channel), feed `stdin`, and return stdout capped
+    /// at `max_stdout`. Exceeding the cap or non-zero exit returns
+    /// `RemoteError::Exec`. stderr is logged at WARN and not returned.
+    ///
+    /// Default implementation reports unsupported so existing in-memory
+    /// `RemoteFs` test mocks don't have to spell it out when their tests don't
+    /// exercise the exec path.
+    async fn exec(
+        &mut self,
+        _argv: &[&str],
+        _stdin: &[u8],
+        _max_stdout: u64,
+    ) -> Result<Vec<u8>, RemoteError> {
+        Err(RemoteError::Exec {
+            code: -127,
+            stderr: "exec not supported by this RemoteFs impl".into(),
+        })
+    }
 }
 
 pub fn cache_root() -> Result<PathBuf, RemoteError> {
@@ -299,6 +331,8 @@ pub async fn open_for_provider(
     provider: &dyn crate::providers::SessionProvider,
     ctx: &mut SyncContext,
 ) -> Result<RemoteOpenResult, RemoteError> {
+    use crate::providers::RemoteSyncStrategy;
+
     ctx.report(&SyncProgress::new(SyncPhase::Connecting));
     ctx.check_cancel()?;
 
@@ -331,6 +365,63 @@ pub async fn open_for_provider(
     let local_root = cache_dir_for(&remote.id, &provider_id)?;
     std::fs::create_dir_all(&local_root)?;
 
+    // ----- L0: mtime short-circuit (whitelist providers only) -----
+    if let Some(files) = provider.remote_sync_files() {
+        if all_files_match(&mut sess, &remote_root, &local_root, &files).await {
+            log::info!(
+                "L0 short-circuit: all whitelisted files match local for {}@{}",
+                provider_id,
+                remote.id
+            );
+            ctx.report(&SyncProgress::new(SyncPhase::UpToDate));
+            return Ok(RemoteOpenResult {
+                local_root: local_root.to_string_lossy().into_owned(),
+                sync_stats: SyncStats::default(),
+            });
+        }
+    }
+
+    // ----- L1/L2: provider-specific incremental strategy -----
+    let strategy = provider.remote_sync_strategy();
+    if matches!(strategy, RemoteSyncStrategy::OpencodeIncremental)
+        && local_root.join("opencode.db").exists()
+    {
+        ctx.check_cancel()?;
+        ctx.report(&SyncProgress::new(SyncPhase::ProbingRemote));
+        if incremental::probe_sqlite3(&mut sess).await {
+            match incremental::sync_opencode_incremental(
+                &mut sess,
+                &remote_root,
+                &local_root,
+                ctx,
+            )
+            .await
+            {
+                Ok(stats) => {
+                    ctx.report(&SyncProgress {
+                        phase: SyncPhase::Done,
+                        current_file: None,
+                        files_done: 0,
+                        files_total: 0,
+                        bytes_done: stats.bytes_pulled,
+                        bytes_total: stats.bytes_pulled,
+                    });
+                    return Ok(RemoteOpenResult {
+                        local_root: local_root.to_string_lossy().into_owned(),
+                        sync_stats: stats,
+                    });
+                }
+                Err(e) => log::warn!(
+                    "opencode incremental failed, falling back to full SFTP: {}",
+                    e
+                ),
+            }
+        } else {
+            log::info!("remote sqlite3 unavailable; using full SFTP for {}", provider_id);
+        }
+    }
+
+    // ----- L3: existing full SFTP path -----
     let stats = match provider.remote_sync_files() {
         Some(files) => mirror::sync_files(&mut sess, &remote_root, &local_root, &files, ctx).await?,
         None => mirror::sync_dir(&mut sess, &remote_root, &local_root, ctx).await?,
@@ -349,6 +440,40 @@ pub async fn open_for_provider(
         local_root: local_root.to_string_lossy().into_owned(),
         sync_stats: stats,
     })
+}
+
+/// Check (size, mtime) on every whitelisted file. Returns true only when all
+/// remote-existing files match local; missing-on-both is also fine. Any IO
+/// hiccup or one-sided presence yields false so we fall through to the next
+/// layer.
+async fn all_files_match(
+    fs: &mut dyn RemoteFs,
+    remote_root: &str,
+    local_root: &std::path::Path,
+    files: &[&str],
+) -> bool {
+    for rel in files {
+        let remote_full = format!("{}/{}", remote_root.trim_end_matches('/'), rel);
+        let local_path = local_root.join(rel);
+        let remote_meta = fs.metadata(&remote_full).await.ok();
+        let local_meta = std::fs::metadata(&local_path).ok();
+        match (remote_meta, local_meta) {
+            (Some(r), Some(l)) if !r.is_dir && l.is_file() => {
+                let lmtime = l
+                    .modified()
+                    .ok()
+                    .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if l.len() != r.size || lmtime != r.mtime {
+                    return false;
+                }
+            }
+            (None, None) => continue, // both absent — fine
+            _ => return false,         // one-sided presence → mismatch
+        }
+    }
+    true
 }
 
 /// Top-level: connect and probe all known providers; do not sync.

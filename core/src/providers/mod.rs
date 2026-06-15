@@ -8,6 +8,18 @@ use std::path::PathBuf;
 use crate::model::{ProviderInfo, SessionDetail, SessionSummary};
 use crate::stats::SkillUsage;
 
+/// How `open_for_provider` should sync this provider's data from a remote host.
+/// Lets providers opt into custom sync paths without the dispatcher having to
+/// `match provider_id` strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteSyncStrategy {
+    /// Use the existing whitelist-or-mirror sync (`mirror::sync_files` /
+    /// `mirror::sync_dir`).
+    Default,
+    /// opencode-specific row-level incremental sync (with full-SFTP fallback).
+    OpencodeIncremental,
+}
+
 pub trait SessionProvider: Send + Sync {
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
@@ -40,6 +52,12 @@ pub trait SessionProvider: Send + Sync {
     /// the real collection (typically delegating to a shared helper).
     fn skill_usage(&self, _detail: &SessionDetail) -> Vec<SkillUsage> {
         Vec::new()
+    }
+
+    /// Sync strategy applied by `remote::open_for_provider`. Default = whatever
+    /// the existing `mirror::sync_files`/`sync_dir` flow would do.
+    fn remote_sync_strategy(&self) -> RemoteSyncStrategy {
+        RemoteSyncStrategy::Default
     }
 
     fn list_sessions(&self, root: &PathBuf) -> anyhow::Result<Vec<SessionSummary>>;

@@ -178,3 +178,140 @@ fn code_agent_3x_provider_parses_a_minimal_fixture() {
     assert_eq!(detail.summary.session_id, "01ABCDEF");
     assert_eq!(detail.nodes.len(), 2);
 }
+
+
+#[tokio::test(flavor = "multi_thread")]
+async fn opencode_incremental_smoke_against_real_sqlite_db() {
+    use aaa_core::remote::incremental::{
+        ensure_opencode_schema, open_cache_db, sync_opencode_incremental,
+    };
+    use aaa_core::remote::{DirEntry, FileMeta, RemoteError, RemoteFs, SyncContext};
+    use async_trait::async_trait;
+    use rusqlite::Connection;
+    use std::path::Path;
+    use std::process::{Command, Stdio};
+    use tempfile::TempDir;
+
+    // Skip silently if `sqlite3` isn't on this machine — CI may not have it.
+    if Command::new("sqlite3").arg("-version").output().is_err() {
+        eprintln!("smoke: sqlite3 binary missing, skipping incremental smoke");
+        return;
+    }
+
+    let tmp = TempDir::new().expect("tempdir");
+    // 1. Build a "remote" db with one session + one message + one part.
+    let remote_db = tmp.path().join("remote.db");
+    {
+        let conn = Connection::open(&remote_db).unwrap();
+        ensure_opencode_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO session (id, parent_id, directory, title, time_created, time_updated) \
+             VALUES ('s1', NULL, '/', 'first', 100, 100)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO message (id, role, session_id, time_created, data) \
+             VALUES ('m1', 'user', 's1', 110, '{}')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO part (id, message_id, type, tool, time_created, data) \
+             VALUES ('p1', 'm1', 'text', NULL, 120, '{}')",
+            [],
+        ).unwrap();
+    }
+
+    // 2. Pre-seed the cache db (simulating a prior full SFTP sync) by copying.
+    let cache_dir = tmp.path().join("cache");
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    let cache_db = cache_dir.join("opencode.db");
+    std::fs::copy(&remote_db, &cache_db).unwrap();
+    // Ensure aaa_sync_state table is present on the cache db.
+    drop(open_cache_db(&cache_db).unwrap());
+
+    // 3. Local sqlite3 CLI as the "remote".
+    struct LocalSqliteFs(std::path::PathBuf);
+    #[async_trait]
+    impl RemoteFs for LocalSqliteFs {
+        async fn home_dir(&mut self) -> Result<String, RemoteError> {
+            Ok("/".into())
+        }
+        async fn metadata(&mut self, _: &str) -> Result<FileMeta, RemoteError> {
+            unreachable!()
+        }
+        async fn read_dir(&mut self, _: &str) -> Result<Vec<DirEntry>, RemoteError> {
+            unreachable!()
+        }
+        async fn download(&mut self, _: &str, _: &Path) -> Result<u64, RemoteError> {
+            unreachable!()
+        }
+        async fn exec(
+            &mut self,
+            argv: &[&str],
+            stdin: &[u8],
+            _max: u64,
+        ) -> Result<Vec<u8>, RemoteError> {
+            // Substitute the placeholder remote path with the local file.
+            let real_argv: Vec<String> = argv
+                .iter()
+                .map(|a| {
+                    if *a == "/remote/opencode.db" {
+                        self.0.to_string_lossy().into_owned()
+                    } else {
+                        (*a).to_string()
+                    }
+                })
+                .collect();
+            let mut child = Command::new(&real_argv[0])
+                .args(&real_argv[1..])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| RemoteError::Exec {
+                    code: -1,
+                    stderr: e.to_string(),
+                })?;
+            use std::io::Write;
+            child.stdin.as_mut().unwrap().write_all(stdin).unwrap();
+            let out = child.wait_with_output().map_err(|e| RemoteError::Exec {
+                code: -1,
+                stderr: e.to_string(),
+            })?;
+            if !out.status.success() {
+                return Err(RemoteError::Exec {
+                    code: out.status.code().unwrap_or(-1),
+                    stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                });
+            }
+            Ok(out.stdout)
+        }
+    }
+
+    let mut fs = LocalSqliteFs(remote_db.clone());
+    let mut ctx = SyncContext::noop();
+    let stats = sync_opencode_incremental(&mut fs, "/remote", &cache_dir, &mut ctx)
+        .await
+        .expect("first incremental sync");
+    assert!(stats.bytes_pulled > 0);
+
+    // 4. Add a new session row remotely; second sync should pick it up.
+    {
+        let conn = Connection::open(&remote_db).unwrap();
+        conn.execute(
+            "INSERT INTO session (id, parent_id, directory, title, time_created, time_updated) \
+             VALUES ('s2', NULL, '/', 'second', 200, 200)",
+            [],
+        ).unwrap();
+    }
+    sync_opencode_incremental(&mut fs, "/remote", &cache_dir, &mut SyncContext::noop())
+        .await
+        .expect("second incremental sync");
+    let conn = Connection::open(&cache_db).unwrap();
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM session", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 2);
+}
+
+

@@ -269,6 +269,10 @@ export const zh = {
       downloading: "正在同步文件…",
       cleaning: "正在清理本地缓存…",
       done: "完成。",
+      up_to_date: "远端无变化",
+      probing_remote: "正在探测远端能力…",
+      incremental_query: "正在拉取远端增量数据…",
+      incremental_apply: "正在应用本地缓存…",
     },
   },
   about: {
