@@ -19,6 +19,11 @@ tools/aaa/
 │       ├── log_buffer.rs   # WARN+ERROR 日志环形缓冲（给 feedback excerpt 用）
 │       ├── log_excerpt.rs  # 日志脱敏/截断
 │       └── logger.rs       # 滚动文件日志（flexi_logger，AAA_LOG 环境变量覆盖）
+├── wire/             # aaa-wire crate（客户端↔服务端共享 wire schema 的唯一定义源）
+│   └── src/
+│       ├── feedback.rs   # CreateFeedbackRequest/Response, GetFeedbackResponse, AttachmentMeta, Category/Severity/Status
+│       ├── health.rs     # HealthResponse
+│       └── version.rs    # SCHEMA_VERSION 常量 + default 助手
 ├── server/            # aaa-hub 服务端（cargo workspace 成员，Axum + SQLite）
 │   ├── src/
 │   │   ├── routes/          # health / feedback / updates(manifest+artifacts) / admin
@@ -45,7 +50,7 @@ tools/aaa/
 ├── scripts/           # 构建/安装/打包脚本（Linux + Windows）
 ├── vendor/tauri-cache/         # Linux AppImage 打包上游产物
 ├── vendor/tauri-cache-windows/ # Windows MSI/NSIS 打包上游产物
-└── Cargo.toml         # workspace = [src-tauri, core, server]
+└── Cargo.toml         # workspace = [src-tauri, core, server, wire]
 ```
 
 技术栈：Tauri 2 + React 18 + TypeScript 5 + Vite 8（前端），Rust（core + src-tauri + server），Node ≥ 20.19。
@@ -218,6 +223,17 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 工作流：涉及代码/功能改动时，先更新这 4 个版本字段 + `release-notes.txt`，再 `git add`，把版本号变更、release notes 变更和功能变更放进**同一个 commit**。如果忘了，就用 `git commit --amend` 补回去（前提是该提交还没推到远端）。纯文档改动跳过版本号步骤即可。
 
 > **每次完成修改都要 push 到远端。** 本仓库的"完成"包含 commit + `git push origin <branch>` 两步——只本地 commit 不推、或者推完忘了告知，都视为没完成。理由：分发产物（deb/rpm/AppImage/MSI/NSIS/portable）都基于远端 master 构建，本地未推的 commit 等同于没做过。原则上不要 force push 到 master；如果是修正未推 commit 的常规 amend，正常 push 即可。
+
+## Wire 兼容规则（重要）
+
+`wire/` crate 是客户端 ↔ aaa-hub 服务端 wire format 的唯一 Rust 定义源。两侧独立发版，所以演进必须满足：
+
+- **新增字段必须 `Option<T>` + `#[serde(default)]`**：旧客户端不发，新服务端能默认；旧服务端不返回，新客户端能默认。
+- **枚举必须有 `#[serde(other)] Unknown` 兜底变体**：避免任何一端引入新值时另一端崩。
+- **不要加 `#[serde(deny_unknown_fields)]`**：未知字段必须被 silently 忽略。
+- **改 `aaa-wire` 任何 pub 类型，必须同步检查 `src/types.ts`** —— TS 这边是手动 mirror，PR review 守门。
+- **删除字段 / 重命名字段 → bump `wire::SCHEMA_VERSION`**，并在 `release-notes.txt` 标注破坏性变更；新增 Optional 字段或新增枚举变体不动 `SCHEMA_VERSION`（前向兼容已由 Optional + Unknown 保证）。
+- **server 独立版本号**（`server/Cargo.toml`）：影响外部行为时按 SemVer 走自己的 bump，不与桌面端 4 处同步。
 
 ## 构建与分发
 
