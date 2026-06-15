@@ -96,6 +96,12 @@ impl Default for AiSettings {
                     cmd_template: "nga".into(),
                     is_preset: true,
                 },
+                AgentConfig {
+                    id: "cac".into(),
+                    name: "Code Agent 3.x".into(),
+                    cmd_template: "cac".into(),
+                    is_preset: true,
+                },
             ],
             prompt_templates: vec![
                 PromptTemplate {
@@ -161,8 +167,9 @@ pub fn load() -> Result<AppSettings> {
     match serde_json::from_str::<AppSettings>(&raw) {
         Ok(mut parsed) => {
             let dev_id_changed = ensure_device_id(&mut parsed);
-            let presets_changed = upgrade_preset_agents(&mut parsed);
-            if dev_id_changed || presets_changed {
+            let presets_upgraded = upgrade_preset_agents(&mut parsed);
+            let presets_added = ensure_canonical_presets(&mut parsed);
+            if dev_id_changed || presets_upgraded || presets_added {
                 let _ = save(&parsed);
             }
             Ok(parsed)
@@ -194,6 +201,28 @@ fn upgrade_preset_agents(s: &mut AppSettings) -> bool {
                 a.name = "nga".into();
                 changed = true;
             }
+        }
+    }
+    changed
+}
+
+/// Inject any canonical preset agents that are missing from the user's
+/// stored settings. Old installs upgrading to a newer build don't get the
+/// new preset by default — `AiSettings::default()` only fires for fresh
+/// installs. This walks the canonical id list and pushes whatever's
+/// missing, copying the canonical record from `AiSettings::default()`.
+/// Returns true if anything changed (caller persists).
+fn ensure_canonical_presets(s: &mut AppSettings) -> bool {
+    let canonical = AiSettings::default().agents;
+    let mut changed = false;
+    for canon in canonical {
+        if !canon.is_preset {
+            continue;
+        }
+        let exists = s.ai.agents.iter().any(|a| a.id == canon.id);
+        if !exists {
+            s.ai.agents.push(canon);
+            changed = true;
         }
     }
     changed
@@ -234,5 +263,28 @@ mod tests {
         let json = r#"{"provider_roots":{},"ai":{},"ui":{"theme":"light","preview_chars":220,"auto_expand_threshold_tokens":0}}"#;
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert!(parsed.remotes.is_empty());
+    }
+
+    #[test]
+    fn ensure_canonical_presets_injects_missing_cac() {
+        let mut s = AppSettings::default();
+        s.ai.agents.retain(|a| a.id != "cac");
+        assert!(!s.ai.agents.iter().any(|a| a.id == "cac"));
+
+        let changed = ensure_canonical_presets(&mut s);
+        assert!(changed, "should report changes when injecting cac");
+        let cac = s.ai.agents.iter().find(|a| a.id == "cac").expect("cac added");
+        assert_eq!(cac.name, "Code Agent 3.x");
+        assert_eq!(cac.cmd_template, "cac");
+        assert!(cac.is_preset);
+    }
+
+    #[test]
+    fn ensure_canonical_presets_idempotent_when_all_present() {
+        let mut s = AppSettings::default();
+        let before = s.ai.agents.len();
+        let changed = ensure_canonical_presets(&mut s);
+        assert!(!changed);
+        assert_eq!(s.ai.agents.len(), before);
     }
 }

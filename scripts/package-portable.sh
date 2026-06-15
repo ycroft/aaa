@@ -115,7 +115,7 @@ cat >"\$desktop_file" <<DESKTOP
 Type=Application
 Name=\$APP_NAME · Agent Analyzer
 GenericName=AI Agent Session Analyzer
-Comment=Inspect local Claude Code / opencode session logs
+Comment=Inspect local AI coding agent session logs
 Exec=\$launcher %U
 Icon=\$APP_ID
 Terminal=false

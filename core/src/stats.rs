@@ -6,57 +6,24 @@
 //! Right now this houses skill-usage aggregation. Future stats (model
 //! switches, longest tool runs, …) can land here too.
 //!
-//! ## Skill detection — why per-provider, not in the trait
+//! ## Skill detection — owned by each provider
 //!
-//! "Skill" is not a universal concept across backends:
+//! `SkillUsage` is the cross-provider output type. Extraction lives on the
+//! [`SessionProvider`] trait (`fn skill_usage(&self, detail) -> Vec<SkillUsage>`)
+//! with a default that returns empty, so each provider decides whether and
+//! how it can extract structured skill records.
 //!
-//! * **Claude Code** records each invocation as a structured `tool_use` with
-//!   `name == "Skill"` and an `input` JSON `{ "skill": "<id>", "args": "..." }`.
-//!   That gives us a clean, reliable signal — see [`collect_claude_code`].
-//!
-//! * **opencode** has no first-class skill record. Skills are injected as a
-//!   plain `role=user` text part — indistinguishable from a long pasted
-//!   prompt without out-of-band knowledge of the skill template content.
-//!   On a fresh database, `part.data` and `message.data` simply contain no
-//!   `skill` key whatsoever.
-//!
-//! Rather than push that asymmetry into the [`SessionProvider`] trait, we
-//! match on `provider_id` here. The trait stays focused on "parse native log
-//! into nodes"; `stats.rs` does the cross-cutting work.
-//!
-//! ## TODO(phase-2): opencode heuristic skill detection
-//!
-//! When/if we want to surface opencode skills:
-//!
-//! 1. Build a fingerprint library from the on-disk skill templates. Likely
-//!    sources (need to confirm by checking a fresh install with skills set up):
-//!      - `~/.config/opencode/command/*.md`
-//!      - `<project>/.opencode/command/*.md`
-//!      - bundled definitions inside the opencode npm package under
-//!        `~/.config/opencode/node_modules/@opencode-ai/...`
-//!    Each entry → `(skill_id, normalised_template_hash, first_n_chars)`.
-//!
-//! 2. For every `MessagePart::Text` on a `NodeKind::User` node, normalise
-//!    whitespace + strip user-supplied trailing args, then look up the
-//!    fingerprint. Hits become `SkillUsage` rows.
-//!
-//! 3. Tag those rows so the UI can show "heuristic match" — distinct from
-//!    Claude Code's exact match. A confidence field on [`SkillUsage`] would
-//!    suffice; add it then, not now (premature).
-//!
-//! 4. Be conservative on false positives: a 3000-char prompt that happens to
-//!    start with `# PRD` shouldn't match unless the body also matches.
-//!    Prefix-only matching is too loose.
-//!
-//! Until that work happens, [`skill_usage`] returns an empty vec for any
-//! provider other than Claude Code, which is honest about what we can see.
-
-use std::collections::HashMap;
+//! Currently:
+//! * `claude-code` and `code-agent-3x` share the implementation in
+//!   [`crate::providers::anthropic_jsonl::collect_skill_usage`].
+//! * `opencode` returns the default empty — its skills are injected as
+//!   plain user-text and aren't reliably distinguishable from regular
+//!   pasted prompts without a fingerprint library. See git history of
+//!   this file for the heuristic plan if/when we want to add it.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::model::{MessagePart, SessionDetail, SessionNode};
+use crate::model::SessionDetail;
 
 /// One row of the skill-usage report. Aggregated by `skill_id` across the
 /// parent session and all its sub-agents.
@@ -80,131 +47,21 @@ pub struct SkillUsage {
 
 /// Collect skill-usage rows from a session detail.
 ///
-/// Walks the parent session and every sub-agent's nodes. Returns a vec
-/// sorted by `count` desc, then `skill_id` asc, so the UI can render it
-/// straight without re-sorting.
-///
-/// Provider-specific behaviour:
-/// - `claude-code`: exact, structured detection (see module docstring).
-/// - everything else: returns an empty vec. See the phase-2 TODO above.
+/// Dispatches through the provider registry — each provider decides how
+/// (or whether) to extract structured skill records. See the module docstring
+/// for the design rationale.
 pub fn skill_usage(detail: &SessionDetail) -> Vec<SkillUsage> {
-    match detail.summary.provider_id.as_str() {
-        "claude-code" => collect_claude_code(detail),
-        _ => Vec::new(),
-    }
-}
-
-/// Mutable accumulator while we're scanning nodes. Becomes a `SkillUsage`
-/// at the end. Splitting it out keeps the merge step a plain map walk.
-#[derive(Default)]
-struct Acc {
-    count: u32,
-    error_count: u32,
-    first_at: Option<String>,
-    last_at: Option<String>,
-}
-
-fn collect_claude_code(detail: &SessionDetail) -> Vec<SkillUsage> {
-    let mut acc: HashMap<String, Acc> = HashMap::new();
-
-    scan_nodes(&detail.nodes, &mut acc);
-    for sa in &detail.subagents {
-        scan_nodes(&sa.nodes, &mut acc);
-    }
-
-    let mut out: Vec<SkillUsage> = acc
-        .into_iter()
-        .map(|(skill_id, a)| SkillUsage {
-            skill_id,
-            count: a.count,
-            error_count: a.error_count,
-            first_at: a.first_at,
-            last_at: a.last_at,
-        })
-        .collect();
-    out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.skill_id.cmp(&b.skill_id)));
-    out
-}
-
-fn scan_nodes(nodes: &[SessionNode], acc: &mut HashMap<String, Acc>) {
-    // First pass: collect (tool_use_id -> skill_id) for all `Skill` ToolUse
-    // parts, plus the count + timestamps. Second pass: walk ToolResult parts
-    // and bump error_count on the matching skill_id when is_error is true.
-    //
-    // Two passes (instead of pairing inline) keeps ordering robust — in
-    // Claude Code's jsonl, the assistant's tool_use block and the
-    // following user's tool_result usually arrive in adjacent records, but
-    // we don't want to rely on that.
-    let mut tool_use_to_skill: HashMap<String, String> = HashMap::new();
-
-    for node in nodes {
-        for part in &node.parts {
-            if let MessagePart::ToolUse {
-                tool_use_id,
-                name,
-                input,
-            } = part
-            {
-                if name != "Skill" {
-                    continue;
-                }
-                let Some(skill_id) = parse_skill_id(input) else {
-                    // Skipping rather than counting under a synthetic key:
-                    // a `Skill` tool_use with no `input.skill` field is malformed
-                    // and wouldn't help any consumer of these stats.
-                    continue;
-                };
-                tool_use_to_skill.insert(tool_use_id.clone(), skill_id.clone());
-
-                let entry = acc.entry(skill_id).or_default();
-                entry.count += 1;
-                if let Some(ts) = node.timestamp.as_ref() {
-                    if entry.first_at.is_none() {
-                        entry.first_at = Some(ts.clone());
-                    }
-                    entry.last_at = Some(ts.clone());
-                }
-            }
-        }
-    }
-
-    for node in nodes {
-        for part in &node.parts {
-            if let MessagePart::ToolResult {
-                tool_use_id,
-                is_error,
-                ..
-            } = part
-            {
-                if !is_error {
-                    continue;
-                }
-                if let Some(skill_id) = tool_use_to_skill.get(tool_use_id) {
-                    if let Some(entry) = acc.get_mut(skill_id) {
-                        entry.error_count += 1;
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// `input` is a pretty-printed JSON string produced by the Claude Code
-/// provider. We only read the `skill` field — `args`, when present, is
-/// payload that doesn't affect the count.
-fn parse_skill_id(input: &str) -> Option<String> {
-    let v: Value = serde_json::from_str(input).ok()?;
-    v.get("skill")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
+    crate::providers::find(&detail.summary.provider_id)
+        .map(|p| p.skill_usage(detail))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{
-        NodeKind, SessionDetail, SessionNode, SessionSummary, SubAgentKind, SubAgentSession,
+        MessagePart, NodeKind, SessionDetail, SessionNode, SessionSummary, SubAgentKind,
+        SubAgentSession,
     };
 
     fn empty_summary(provider: &str) -> SessionSummary {

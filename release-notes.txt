@@ -1,3 +1,12 @@
+v1.5.0
+-------
+- 新增：Code Agent 3.x 后端（默认日志目录 `~/.cac/projects/`，与 Claude Code 协议完全一致）。前端零改动，自动出现在设置页 / Splash / 远程编辑器等所有 provider 入口。
+- 重构：抽 `core/src/providers/anthropic_jsonl.rs` 共享模块，`claude_code` 和 `code_agent_3x` 都缩成 ~50 行薄壳，复用同一份 JSONL 解析与 skill 检测代码。
+- 重构：`skill_usage` 从 `core/src/stats.rs` 的 provider_id 字符串 match 派发改为 `SessionProvider` trait 默认方法，每个 provider 自己负责（或不负责）skill 提取。`stats.rs` 退化成只持有 `SkillUsage` 类型 + 通过 `providers::find` 派发的薄入口。
+- 设置：`AiSettings` 默认 preset agents 增加 `cac`（cmd_template = `cac`）。新增 `ensure_canonical_presets` 迁移函数，老用户首次启动自动注入缺失的 canonical preset。
+- 安装脚本：4 处 desktop entry / shortcut 描述统一改为 "AI coding agent session logs"，避免每加一个后端就要改文案。
+- CLAUDE.md：重写"新增 backend 的步骤"小节为 A/B 双档 checklist（同协议薄壳 vs 自定义协议完整实现），并把 code-agent-3x 加进 backend 表。
+
 v1.4.6
 -------
 - 修复：opencode provider 的"兼容 nga ≤ 2.0"后缀此前直接写死在 Rust 端的 `display_name()` 里，导致英文界面下也显示中文"兼容"。改为前端 i18n：`core/src/providers/opencode.rs::display_name()` 退回为纯 `"opencode"`，后缀拆到 `format.opencode_compat_suffix` 翻译键（zh：`（兼容 nga ≤ 2.0）`，en：` (compatible with nga ≤ 2.0)`），新增 `src/format.ts::providerLabel(p, t)` 统一拼装。所有 8 个 provider 显示点（设置 / Splash 三处 / 远程编辑器 / App 标题 / 状态栏 / 远程进度对话框）改走该 helper。

@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 
 use crate::model::{ProviderInfo, SessionDetail, SessionSummary};
+use crate::stats::SkillUsage;
 
 pub trait SessionProvider: Send + Sync {
     fn id(&self) -> &str;
@@ -34,6 +35,13 @@ pub trait SessionProvider: Send + Sync {
         None
     }
 
+    /// Skill-usage extraction. Default returns empty — providers that emit
+    /// structured `name == "Skill"` tool_use records override this to do
+    /// the real collection (typically delegating to a shared helper).
+    fn skill_usage(&self, _detail: &SessionDetail) -> Vec<SkillUsage> {
+        Vec::new()
+    }
+
     fn list_sessions(&self, root: &PathBuf) -> anyhow::Result<Vec<SessionSummary>>;
 
     fn load_session(&self, source_path: &PathBuf) -> anyhow::Result<SessionDetail>;
@@ -51,12 +59,15 @@ pub fn info_of(p: &dyn SessionProvider, override_root: Option<&PathBuf>) -> Prov
     }
 }
 
+pub mod anthropic_jsonl;
 pub mod claude_code;
+pub mod code_agent_3x;
 pub mod opencode;
 
 pub fn all() -> Vec<Box<dyn SessionProvider>> {
     vec![
         Box::new(claude_code::ClaudeCodeProvider),
+        Box::new(code_agent_3x::CodeAgent3xProvider),
         Box::new(opencode::OpencodeProvider),
     ]
 }

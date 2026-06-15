@@ -76,11 +76,26 @@ pub trait SessionProvider: Send + Sync {
 - `remote_root_candidates()` — 远程主机上的候选日志路径（`{home}` 占位符会被替换为远程 `$HOME`）
 - `remote_sync_files()` — 选择性同步文件列表（如 SQLite 仅需 db 文件本身）；`None` 表示整树镜像
 
-新增 backend 的步骤：
+新增 backend 的步骤分两档，按是否与现有 provider 同协议选：
 
-1. 在 `core/src/providers/` 加一个文件实现 `SessionProvider`，把原生日志翻译成 `SessionNode + MessagePart + TokenUsage`。
-2. 在 `providers/mod.rs::all()` 里注册一行。
-3. 不需要动 `commands.rs`，也不需要动前端——`list_providers` 命令会自动把它列出来。
+**A. 协议与 Claude Code 完全相同（jsonl 形态，例如 Code Agent 3.x）：**
+
+1. 在 `core/src/providers/<id>.rs` 写 ~50 行薄壳：const ID + display_name + default_root + remote_root_candidates，`list_sessions` / `load_session` / `skill_usage` 全部委托到 `super::anthropic_jsonl`
+2. 在 `providers/mod.rs` 加 `pub mod <id>;` 并在 `all()` 注册一行
+3. （可选）若是可启动的 agent，在 `settings.rs::AiSettings::default()` 加一条 `AgentConfig` 进 `agents` 列表（自动会被 `ensure_canonical_presets` 迁移给老用户补上）
+4. 在 `core/tests/smoke.rs` 加一个 `parses_a_real_<id>_session_when_one_is_present` 测试
+5. 完成 —— 前端、Tauri 命令、远程同步全部零改动
+
+**B. 协议不同（自定义存储，例如 opencode 的 SQLite）：**
+
+1. 在 `core/src/providers/<id>.rs` 完整实现 `SessionProvider`，把原生日志翻译成 `SessionNode + MessagePart + TokenUsage`，正确填充 `cumulative_context_tokens`
+2. 若需结构化 skill 检测，override `fn skill_usage()` 自定义提取逻辑（参考 `anthropic_jsonl::collect_skill_usage` 的两遍扫描思路）
+3. 若远程同步只需特定文件（不是整树镜像），override `fn remote_sync_files()` 返回白名单（参考 opencode：`vec!["opencode.db", "opencode.db-wal", "opencode.db-shm"]`）
+4. 在 `providers/mod.rs::all()` 注册
+5. （可选）AI preset 同 A 第 3 步，smoke test 同 A 第 4 步
+6. 前端通常零改动；唯一需要前端配合的场景：display_name 需要本地化后缀，加到 `src/format.ts::providerLabel`（参考 opencode 的 nga-compat 后缀）
+
+> **关键不变量**：凡是涉及 provider 派发的逻辑都已经走 `providers::find(&provider_id)` 动态查找，**`core/src/stats.rs` / Tauri 命令 / 前端组件里都不应该出现按 provider_id 字符串 match 的代码**。如果你正想加一行这样的 match —— 退一步，加一个 trait 方法。
 
 ### 统一数据模型（`core/src/model.rs`）
 
@@ -162,6 +177,7 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 | ID | 状态 | 默认目录 | 说明 |
 |----|------|---------|------|
 | `claude-code` | 已实现 | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | 逐行 JSONL 解析，按 `type` 字段映射节点；含子代理（`subagents/agent-<id>.jsonl`） |
+| `code-agent-3x` | 已实现 | `~/.cac/projects/<encoded-cwd>/<sessionId>.jsonl` | Claude Code 兼容客户端，与 `claude-code` 共享 `core/src/providers/anthropic_jsonl.rs` 解析模块 |
 | `opencode` | 已实现 | `~/.local/share/opencode/opencode.db`（可在设置里覆盖目录或直接指向 db 文件） | 读 SQLite `session/message/part` 三张表；`source_path` 编码为 `<db>#<session_id>`；tool 调用合并为单个 ToolUse 节点；`remote_sync_files()` 返回选择性文件列表 |
 
 ## 模型上下文窗口

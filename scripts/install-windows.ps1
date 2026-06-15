@@ -106,7 +106,7 @@ $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $installBin
 $shortcut.WorkingDirectory = $installRoot
-$shortcut.Description = 'Inspect local Claude Code / opencode session logs'
+$shortcut.Description = 'Inspect local AI coding agent session logs'
 if ($installedIcon -and $installedIcon.ToLower().EndsWith('.ico')) {
     $shortcut.IconLocation = $installedIcon
 } else {
