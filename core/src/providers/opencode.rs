@@ -33,7 +33,7 @@ impl SessionProvider for OpencodeProvider {
         PROVIDER_ID
     }
     fn display_name(&self) -> &str {
-        "opencode"
+        "opencode (兼容 nga <= 2.0)"
     }
     fn default_root(&self) -> Option<PathBuf> {
         // Windows: opencode stores under %USERPROFILE%\.local\share\opencode

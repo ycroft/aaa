@@ -1,3 +1,7 @@
+v1.4.5
+-------
+- 文案：opencode provider 的 display_name 从 "opencode" 改为 "opencode (兼容 nga <= 2.0)"，给所有 UI 显示点（设置 / Splash / 远程编辑器 / 窗口标题 / 状态栏 / 远程进度对话框）统一加上后缀。改动只在 `core/src/providers/opencode.rs::display_name()` 一处——前端从 `ProviderInfo.display_name` 读，全部联动。
+
 v1.4.4
 -------
 - 修复：`./scripts/dev.sh` 在 Linux 上启动后立刻报 `ENOSPC: System limit for number of file watchers reached`，根因是 Vite 8 的 `optimizeDeps` 默认把项目里所有 `*.html` 当 dep 入口爬取，包括 Tauri 编译时落在 `target/release/build/*/out/tauri-codegen-assets/*.html` 的脚手架副本与 `server/admin-ui/index.html`，由此让 chokidar 显式 watch `target/debug/incremental/` 下成千上万的 `.o` 文件，瞬间打爆 `fs.inotify.max_user_watches`。`server.watch.ignored` 救不了——它只管"递归 walk 是否进入"，管不了"显式被加入监听列表"。在 `vite.config.ts` 加 `optimizeDeps.entries: ["index.html"]` 把 dep 优化器入口锁死到 Tauri 前端唯一的 HTML 入口，`server.watch.ignored` 同时补 `**/target/**` 作为兜底。
