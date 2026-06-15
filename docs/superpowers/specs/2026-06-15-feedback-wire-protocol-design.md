@@ -148,11 +148,14 @@ pub enum Status {
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
+    pub status: String,   // 总是 "ok"，保留现有 wire 形状
+    pub version: String,  // 服务端 CARGO_PKG_VERSION
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
-    pub ok: bool,
 }
 ```
+
+> 现有 `/healthz` 响应已经是 `{"status":"ok","version":"X.Y.Z"}`（见 `routes/health.rs`），改造**只新增 `schema_version` 字段**，wire 形状对外完全兼容。
 
 `wire/src/version.rs`：
 
@@ -192,7 +195,7 @@ pub(crate) fn default_schema_version() -> u32 { SCHEMA_VERSION }
 - `server/Cargo.toml` 追加 `aaa-wire = { path = "../wire" }`
 - `domain/feedback.rs` 直接删除（类型已搬走），`routes/feedback.rs` 的 import 改为 `use aaa_wire::feedback::*`
 - handler 签名 `Json<CreateFeedbackRequest>` / `Json<CreateFeedbackResponse>`
-- `routes/health.rs` 返回 `Json<HealthResponse>`（之前是字符串 "ok"，改成结构体）；现有客户端 `hub.ping()` 只检查 `r.status().is_success()`，不读 body，所以这是对外行为的可见变化但不破坏既有客户端
+- `routes/health.rs` 返回 `Json<HealthResponse>`（之前是 `json!()` 宏拼的 `{status, version}`，改成结构体，wire 形状完全兼容，只新增可选 `schema_version` 字段）
 - `routes/feedback.rs` 的 `FeedbackView`/`AttachmentView` 退役，用 `GetFeedbackResponse`/`AttachmentMeta`
 - 适配 `server/tests/*` 的所有集成测试，行为预期不变
 
@@ -214,12 +217,12 @@ pub(crate) fn default_schema_version() -> u32 { SCHEMA_VERSION }
 | Step | 桌面端 4 处版本字段 | `server/Cargo.toml` | `wire/Cargo.toml` | release-notes.txt |
 |------|---------------------|---------------------|-------------------|-------------------|
 | 1 | 不动（仅新建 crate，无人 depend，桌面端二进制字节不变） | 不动 | 起步 `0.1.0` | 不加 |
-| 2 | 不动（server 改不影响桌面端二进制） | minor bump `0.1.0 → 0.2.0`（health 响应从字符串变结构体） | 不动 | 不加 |
+| 2 | 不动（server 改不影响桌面端二进制） | patch bump `0.1.0 → 0.1.1`（内部切到 wire 类型；wire 形状仅新增可选 schema_version 字段，外部兼容） | 不动 | 不加 |
 | 3 | patch bump（src-tauri 开始依赖 aaa-wire，hub.rs 改了） | 不动 | 不动 | 加一行"Typed feedback wire schema (aaa-wire); forward-compatible Optional fields and Unknown enum fallback" |
 | 4 | 不动（纯 scripts 改动，且不内联进二进制） | 不动 | 不动 | 不加 |
 
 > Step 1 起 crate 但无人 depend，桌面端 + server 二进制都不变；workspace `Cargo.lock` 的 wire 行只是元数据，不进任何二进制。
-> Step 2 桌面端不动——`server/Cargo.toml` 是独立版本。
+> Step 2 桌面端不动——`server/Cargo.toml` 是独立版本；server 改的是内部类型来源，对外 wire 形状仅新增可选字段。
 > Step 4 改的是 scripts/，不影响任何二进制；按 CLAUDE.md "纯文档/脚本改动跳过版本号"。
 
 ## Server Release Script
@@ -278,7 +281,7 @@ pub(crate) fn default_schema_version() -> u32 { SCHEMA_VERSION }
 
 | 风险 | 缓解 |
 |------|------|
-| `routes/health.rs` 从字符串改 JSON 后，可能有未知第三方监控/curl 脚本依赖原 "ok" 字符串 | 当前 client `hub.ping()` 只检查 HTTP status，未读 body；release notes 标注此变化 |
+| `routes/health.rs` 从 `json!()` 宏改 `Json<HealthResponse>`，现有 health.rs 集成测试仍然通过（断言 `status == "ok"` 和 `version` 是字符串） | 实际 wire 形状未变，纯内部类型重构 |
 | `domain/feedback.rs` 删除后，server 内部其他模块（如 notify）若曾 import 这些类型会断 | Step 2 实施时全工程 grep `domain::feedback::` 确认 |
 | `aaa-wire` 与前端 TS 类型脱节漂移 | doc comment 强约束 + PR review 守门；不引入 codegen（YAGNI） |
 | `migrations/` 目录用相对路径加载——dist 解压后若用户 `./aaa-hub` 时不在 dist 根会启动失败 | README 显式说明；systemd unit 样例带 `WorkingDirectory=` |
