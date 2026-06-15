@@ -15,6 +15,17 @@ export default defineConfig({
     hmr: host
       ? { protocol: "ws", host, port: 1421 }
       : undefined,
-    watch: { ignored: ["**/src-tauri/**"] },
+    watch: { ignored: ["**/src-tauri/**", "**/target/**"] },
+  },
+  // Pin the dep optimizer to the Tauri frontend's entry. Otherwise Vite 8
+  // auto-discovers every *.html in the project (including
+  // target/release/build/*/out/tauri-codegen-assets/*.html scaffolds and
+  // server/admin-ui/index.html), crawls their imports, and asks chokidar
+  // to watch tens of thousands of files under target/ — blowing through
+  // the inotify watcher limit (ENOSPC) on Linux. server.watch.ignored
+  // does not help here because the offending paths are added as explicit
+  // watch targets rather than via project-tree traversal.
+  optimizeDeps: {
+    entries: ["index.html"],
   },
 });

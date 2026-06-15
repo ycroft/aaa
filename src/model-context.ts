@@ -28,6 +28,8 @@ const TABLE: Array<[RegExp, number]> = [
   [/^glm-5\.1/i,               200_000],
   [/^glm-5/i,                  200_000],
   [/^glm-4\.7/i,               200_000],
+  // DeepSeek V4 ships with a 1M-token context window by default.
+  [/^deepseek-v4/i,            1_000_000],
 ];
 
 export function lookupContextWindow(model: string | null | undefined): number | null {
