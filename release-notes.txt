@@ -1,3 +1,9 @@
+v1.6.1
+-------
+- 引入 aaa-wire crate：客户端与 aaa-hub 服务端共享前向兼容的 JSON wire schema
+- 反馈接口请求/响应改为类型化 DTO，新增 schema_version 字段（Optional，旧服务端无感）
+- 枚举（category/severity/status）增加 Unknown 兜底变体，未来扩展不会让客户端崩
+
 v1.6.0
 -------
 - 新增：opencode 远程同步行级增量。三层降级链：L0 mtime 短路（远端 db 文件 size+mtime 全未变 → 零字节传输）→ L1 远端探测 sqlite3（无则降级）→ L2 行级增量（远端跑 SELECT、本地缓存 db 内事务 INSERT OR REPLACE/IGNORE，按 (session/message/part) 三个时间戳水位线推进）→ L3 现有全量 SFTP 兜底。典型增量传输从整 db（几百 MB）降到 KB 级。

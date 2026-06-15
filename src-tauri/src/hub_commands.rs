@@ -12,7 +12,6 @@ use aaa_core::log_excerpt;
 use base64::Engine;
 use log::{info, warn};
 use serde::Deserialize;
-use serde_json::json;
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 
@@ -74,17 +73,18 @@ pub async fn submit_feedback(
         None
     };
 
-    let body = json!({
-        "category": input.category,
-        "severity": input.severity,
-        "title": input.title,
-        "description": input.description,
-        "contact_email": input.contact_email,
-        "app_version": app_version,
-        "os_info": os_info,
-        "device_id": device_id,
-        "log_excerpt": log_excerpt_value,
-    });
+    let req = aaa_wire::feedback::CreateFeedbackRequest {
+        schema_version: aaa_wire::SCHEMA_VERSION,
+        category: parse_category(&input.category),
+        severity: input.severity.as_deref().map(parse_severity),
+        title: input.title.clone(),
+        description: input.description.clone(),
+        contact_email: input.contact_email.clone(),
+        app_version,
+        os_info,
+        device_id,
+        log_excerpt: log_excerpt_value,
+    };
 
     let mut atts = Vec::new();
     for a in input.attachments {
@@ -98,7 +98,7 @@ pub async fn submit_feedback(
         atts.push((a.filename, a.mime, bytes));
     }
 
-    let created = client.submit(body, atts).await;
+    let created = client.submit(req, atts).await;
     let Some(c) = created else {
         info!("submit_feedback: hub returned None (silent)");
         return Ok(None);
@@ -159,4 +159,14 @@ fn os_info_string() -> String {
         std::env::consts::FAMILY,
         std::env::consts::ARCH
     )
+}
+
+fn parse_category(s: &str) -> aaa_wire::feedback::Category {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .unwrap_or(aaa_wire::feedback::Category::Other)
+}
+
+fn parse_severity(s: &str) -> aaa_wire::feedback::Severity {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .unwrap_or(aaa_wire::feedback::Severity::Trivial)
 }

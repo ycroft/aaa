@@ -77,7 +77,7 @@ impl HubClient {
 
     pub async fn submit(
         &self,
-        body: serde_json::Value,
+        req: aaa_wire::feedback::CreateFeedbackRequest,
         attachments: Vec<(String, String, Vec<u8>)>,
     ) -> Option<CreatedTicket> {
         if !self.is_configured() {
@@ -86,12 +86,12 @@ impl HubClient {
         let res = self
             .http
             .post(format!("{}/v1/feedback", self.base))
-            .json(&body)
+            .json(&req)
             .send()
             .await;
-        let created: CreatedTicket = match res {
+        let created_resp: aaa_wire::feedback::CreateFeedbackResponse = match res {
             Ok(r) if r.status().is_success() => match r.json().await {
-                Ok(c) => c,
+                Ok(v) => v,
                 Err(e) => {
                     log::warn!("submit json decode: {}", e);
                     return None;
@@ -105,6 +105,10 @@ impl HubClient {
                 log::warn!("submit transport: {}", e);
                 return None;
             }
+        };
+        let created = CreatedTicket {
+            ticket_id: created_resp.ticket_id,
+            claim_token: created_resp.claim_token,
         };
         for (filename, mime, bytes) in attachments {
             let part = match reqwest::multipart::Part::bytes(bytes)
@@ -140,13 +144,13 @@ impl HubClient {
             .await
         {
             Ok(r) if r.status().is_success() => r
-                .json::<serde_json::Value>()
+                .json::<aaa_wire::feedback::GetFeedbackResponse>()
                 .await
                 .ok()
                 .map(|v| RemoteTicketView {
-                    status: v["status"].as_str().unwrap_or("unknown").to_string(),
-                    admin_note: v["admin_note"].as_str().map(|s| s.to_string()),
-                    updated_at: v["updated_at"].as_i64().unwrap_or(0),
+                    status: v.status.as_str().to_string(),
+                    admin_note: v.admin_note,
+                    updated_at: v.updated_at,
                 }),
             Ok(r) => {
                 log::info!("get_status non-success: {}", r.status());

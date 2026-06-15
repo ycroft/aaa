@@ -326,3 +326,10 @@ export const EMPTY_FILTER: SessionFilter = {
   customStart: null,
   customEnd: null,
 };
+
+// ---
+// Wire schema source of truth lives in `wire/src/feedback.rs` and
+// `wire/src/health.rs`. The TS types above are projections suitable for
+// React state — they intentionally drop `schema_version` and other
+// transport-only fields. If a new field is added on the wire that the
+// UI must surface, mirror it here by hand.
