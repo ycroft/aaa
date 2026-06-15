@@ -382,40 +382,125 @@ pub async fn open_for_provider(
     }
 
     // ----- L1/L2: provider-specific incremental strategy -----
+    //
+    // opencode and its forks (e.g. ngagent) share the same three-table SQLite
+    // schema, so we run the same incremental routine against each db that has
+    // a local cache copy. Per-db fallback: any db that fails L2 (schema drift,
+    // sqlite3 version too old, exec timeout, …) gets byte-synced individually
+    // via sync_files, while the others keep their KB-level incremental.
     let strategy = provider.remote_sync_strategy();
-    if matches!(strategy, RemoteSyncStrategy::OpencodeIncremental)
-        && local_root.join("opencode.db").exists()
-    {
+    if matches!(strategy, RemoteSyncStrategy::OpencodeIncremental) {
         ctx.check_cancel()?;
         ctx.report(&SyncProgress::new(SyncPhase::ProbingRemote));
         if incremental::probe_sqlite3(&mut sess).await {
-            match incremental::sync_opencode_incremental(
-                &mut sess,
-                &remote_root,
-                &local_root,
-                ctx,
-            )
-            .await
-            {
-                Ok(stats) => {
-                    ctx.report(&SyncProgress {
-                        phase: SyncPhase::Done,
-                        current_file: None,
-                        files_done: 0,
-                        files_total: 0,
-                        bytes_done: stats.bytes_pulled,
-                        bytes_total: stats.bytes_pulled,
-                    });
-                    return Ok(RemoteOpenResult {
-                        local_root: local_root.to_string_lossy().into_owned(),
-                        sync_stats: stats,
-                    });
+            // Every (db_relpath, sidecar_files) bundle the strategy knows about.
+            // sidecars are the WAL/SHM that tag along with each db; they don't
+            // get incremental treatment but they DO need byte-sync so the cache
+            // matches what opencode itself would see on a clean restart.
+            const DB_BUNDLES: &[(&str, &[&str])] = &[
+                ("opencode.db", &["opencode.db-wal", "opencode.db-shm"]),
+                ("db/ngagent.db", &["db/ngagent.db-wal", "db/ngagent.db-shm"]),
+            ];
+
+            let mut total = SyncStats::default();
+            let mut any_l2_succeeded = false;
+            let mut byte_sync_files: Vec<&str> = Vec::new();
+
+            for (db_rel, sidecars) in DB_BUNDLES {
+                // Skip dbs whose remote path doesn't exist — neither cache miss
+                // nor a real "new" remote, just absent on this host.
+                let remote_db_path = format!("{}/{}", remote_root.trim_end_matches('/'), db_rel);
+                if sess.metadata(&remote_db_path).await.is_err() {
+                    continue;
                 }
-                Err(e) => log::warn!(
-                    "opencode incremental failed, falling back to full SFTP: {}",
-                    e
-                ),
+
+                // First sync ever: cache empty → must byte-sync this db (and
+                // sidecars) to bootstrap before incremental can run.
+                if !local_root.join(db_rel).exists() {
+                    byte_sync_files.push(db_rel);
+                    byte_sync_files.extend(sidecars.iter().copied());
+                    continue;
+                }
+
+                match incremental::sync_opencode_incremental(
+                    &mut sess,
+                    &remote_root,
+                    &local_root,
+                    db_rel,
+                    ctx,
+                )
+                .await
+                {
+                    Ok(s) => {
+                        any_l2_succeeded = true;
+                        total.bytes_pulled = total.bytes_pulled.saturating_add(s.bytes_pulled);
+                        // Sidecars still need byte-sync (their mtime drives L0
+                        // and ensures cache parity with the remote).
+                        byte_sync_files.extend(sidecars.iter().copied());
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "L2 failed for {}, falling back to byte-sync for that db: {}",
+                            db_rel,
+                            e
+                        );
+                        byte_sync_files.push(db_rel);
+                        byte_sync_files.extend(sidecars.iter().copied());
+                    }
+                }
             }
+
+            if !byte_sync_files.is_empty() {
+                match mirror::sync_files(
+                    &mut sess,
+                    &remote_root,
+                    &local_root,
+                    &byte_sync_files,
+                    ctx,
+                )
+                .await
+                {
+                    Ok(extra) => {
+                        total.files_pulled = total.files_pulled.saturating_add(extra.files_pulled);
+                        total.files_skipped =
+                            total.files_skipped.saturating_add(extra.files_skipped);
+                        total.files_deleted_locally = total
+                            .files_deleted_locally
+                            .saturating_add(extra.files_deleted_locally);
+                        total.bytes_pulled = total.bytes_pulled.saturating_add(extra.bytes_pulled);
+                    }
+                    Err(e) => {
+                        // If even the byte-level fallback for the remaining
+                        // files fails, propagate so the caller surfaces it —
+                        // this isn't a "no sqlite3" scenario, it's an SFTP
+                        // failure and there's nothing further to fall back to.
+                        if !any_l2_succeeded {
+                            return Err(e);
+                        }
+                        log::warn!(
+                            "L2 succeeded for at least one db but byte-sync of remaining files failed: {}",
+                            e
+                        );
+                    }
+                }
+            }
+
+            if any_l2_succeeded || !byte_sync_files.is_empty() {
+                ctx.report(&SyncProgress {
+                    phase: SyncPhase::Done,
+                    current_file: None,
+                    files_done: total.files_pulled,
+                    files_total: total.files_pulled,
+                    bytes_done: total.bytes_pulled,
+                    bytes_total: total.bytes_pulled,
+                });
+                return Ok(RemoteOpenResult {
+                    local_root: local_root.to_string_lossy().into_owned(),
+                    sync_stats: total,
+                });
+            }
+            // Else: no candidate db existed remotely → fall through to L3 to
+            // keep the original "missing root" / "empty whitelist" behaviour.
         } else {
             log::info!("remote sqlite3 unavailable; using full SFTP for {}", provider_id);
         }

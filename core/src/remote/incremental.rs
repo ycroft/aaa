@@ -358,39 +358,50 @@ fn io_to_remote(e: rusqlite::Error) -> RemoteError {
     RemoteError::Sftp(format!("cache db: {}", e))
 }
 
-/// Run the full L2 incremental flow against `<remote_root>/opencode.db`.
-/// Errors propagate; the caller (`open_for_provider`) decides whether to
-/// fall back to L3 full SFTP.
+/// Run the full L2 incremental flow against `<remote_root>/<db_relpath>` →
+/// `<local_root>/<db_relpath>`. opencode and ngagent share the same three-table
+/// schema (session/message/part), so the same routine handles both — caller
+/// just passes a different `db_relpath` (e.g. `"opencode.db"` or
+/// `"db/ngagent.db"`).
+///
+/// Errors propagate; the caller (`open_for_provider`) decides whether to fall
+/// back to L3 byte-level SFTP for this specific db.
 pub async fn sync_opencode_incremental(
     fs: &mut dyn RemoteFs,
     remote_root: &str,
     local_root: &Path,
+    db_relpath: &str,
     ctx: &mut SyncContext,
 ) -> Result<SyncStats, RemoteError> {
     let started = std::time::Instant::now();
-    let cache_db = local_root.join("opencode.db");
+    let cache_db = local_root.join(db_relpath);
     if !cache_db.exists() {
-        return Err(RemoteError::Sftp(
-            "incremental requires existing cache db; first sync should have used SFTP".into(),
-        ));
+        return Err(RemoteError::Sftp(format!(
+            "incremental requires existing cache db at {:?}; first sync should have used SFTP",
+            cache_db
+        )));
     }
 
     ctx.check_cancel()?;
     ctx.report(&SyncProgress {
         phase: SyncPhase::IncrementalQuery,
-        current_file: Some("session/message/part".into()),
+        current_file: Some(format!("{} session/message/part", db_relpath)),
         files_done: 0,
         files_total: 3,
         bytes_done: 0,
         bytes_total: 0,
     });
 
+    if let Some(parent) = cache_db.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| RemoteError::Sftp(format!("mkdir cache parent: {}", e)))?;
+    }
     let mut conn = open_cache_db(&cache_db)
-        .map_err(|e| RemoteError::Sftp(format!("open cache db: {}", e)))?;
+        .map_err(|e| RemoteError::Sftp(format!("open cache db {:?}: {}", cache_db, e)))?;
     let wm = read_watermarks(&conn)
         .map_err(|e| RemoteError::Sftp(format!("read watermarks: {}", e)))?;
 
-    let remote_db = format!("{}/opencode.db", remote_root.trim_end_matches('/'));
+    let remote_db = format!("{}/{}", remote_root.trim_end_matches('/'), db_relpath);
     let stdin = build_query_script(&wm);
     let argv = ["sqlite3", "-readonly", "-json", remote_db.as_str()];
 
@@ -401,7 +412,7 @@ pub async fn sync_opencode_incremental(
     ctx.check_cancel()?;
     ctx.report(&SyncProgress {
         phase: SyncPhase::IncrementalApply,
-        current_file: Some("session/message/part".into()),
+        current_file: Some(format!("{} session/message/part", db_relpath)),
         files_done: 0,
         files_total: 3,
         bytes_done,
@@ -419,8 +430,15 @@ pub async fn sync_opencode_incremental(
         elapsed_ms: started.elapsed().as_millis() as u64,
     };
     info!(
-        "opencode incremental ok: bytes={} wm session={}→{} message={}→{} part={}→{}",
-        bytes_done, wm.session, new_wm.session, wm.message, new_wm.message, wm.part, new_wm.part,
+        "{} incremental ok: bytes={} wm session={}→{} message={}→{} part={}→{}",
+        db_relpath,
+        bytes_done,
+        wm.session,
+        new_wm.session,
+        wm.message,
+        new_wm.message,
+        wm.part,
+        new_wm.part,
     );
     Ok(stats)
 }
@@ -660,7 +678,7 @@ mod tests {
             Ok(stdout.to_vec()),
         );
         let mut ctx = SyncContext::noop();
-        let stats = sync_opencode_incremental(&mut fs, "/remote", tmp.path(), &mut ctx)
+        let stats = sync_opencode_incremental(&mut fs, "/remote", tmp.path(), "opencode.db", &mut ctx)
             .await
             .unwrap();
         assert_eq!(stats.bytes_pulled, stdout.len() as u64);
@@ -685,7 +703,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut fs = FakeExecFs::new();
         let mut ctx = SyncContext::noop();
-        let err = sync_opencode_incremental(&mut fs, "/remote", tmp.path(), &mut ctx)
+        let err = sync_opencode_incremental(&mut fs, "/remote", tmp.path(), "opencode.db", &mut ctx)
             .await
             .unwrap_err();
         match err {

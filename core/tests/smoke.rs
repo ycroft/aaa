@@ -290,7 +290,7 @@ async fn opencode_incremental_smoke_against_real_sqlite_db() {
 
     let mut fs = LocalSqliteFs(remote_db.clone());
     let mut ctx = SyncContext::noop();
-    let stats = sync_opencode_incremental(&mut fs, "/remote", &cache_dir, &mut ctx)
+    let stats = sync_opencode_incremental(&mut fs, "/remote", &cache_dir, "opencode.db", &mut ctx)
         .await
         .expect("first incremental sync");
     assert!(stats.bytes_pulled > 0);
@@ -304,7 +304,7 @@ async fn opencode_incremental_smoke_against_real_sqlite_db() {
             [],
         ).unwrap();
     }
-    sync_opencode_incremental(&mut fs, "/remote", &cache_dir, &mut SyncContext::noop())
+    sync_opencode_incremental(&mut fs, "/remote", &cache_dir, "opencode.db", &mut SyncContext::noop())
         .await
         .expect("second incremental sync");
     let conn = Connection::open(&cache_db).unwrap();

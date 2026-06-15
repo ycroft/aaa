@@ -1,10 +1,11 @@
 v1.6.0
 -------
 - 新增：opencode 远程同步行级增量。三层降级链：L0 mtime 短路（远端 db 文件 size+mtime 全未变 → 零字节传输）→ L1 远端探测 sqlite3（无则降级）→ L2 行级增量（远端跑 SELECT、本地缓存 db 内事务 INSERT OR REPLACE/IGNORE，按 (session/message/part) 三个时间戳水位线推进）→ L3 现有全量 SFTP 兜底。典型增量传输从整 db（几百 MB）降到 KB 级。
+- 增量逻辑同时覆盖 opencode.db 和 ngagent.db（两者 schema 一致，复用同一份代码）。dispatcher 按 (db, sidecar 列表) bundle 逐个跑增量，单个 db schema 漂移或查询失败时该 db 自动降级到 byte-sync，其余 db 仍享受 KB 级增量。WAL/SHM 始终走 byte-sync（保持缓存与远端文件级一致）。
 - `RemoteFs` trait 新增 `exec(argv, stdin, max_stdout)` 方法（russh 通过 SSH exec channel 实现），用 argv 数组 + stdin 喂 SQL 规避命令/SQL 注入。新增 `RemoteError::Exec { code, stderr }` 错误变体，stdout 上限 256 MB 防止内存爆掉。
 - `SessionProvider` trait 新增 `remote_sync_strategy()` 方法（默认 `Default`，opencode 返回 `OpencodeIncremental`），dispatcher 按 trait 派发，避免按 provider id 字符串 match。
 - 新增 SyncPhase 阶段：`up_to_date` / `probing_remote` / `incremental_query` / `incremental_apply`，前端进度对话框 i18n 文案与百分比计算同步适配。
-- 新模块 `core/src/remote/incremental.rs`：probe_sqlite3 + watermarks 表读写 + 查询脚本构造 + stdout 切分 + 事务化 apply + 顶层 `sync_opencode_incremental` 入口；含 10 个单元测试 + 1 个 smoke 集成测试（用真实 sqlite3 二进制当远端）。
+- 新模块 `core/src/remote/incremental.rs`：probe_sqlite3 + watermarks 表读写 + 查询脚本构造 + stdout 切分 + 事务化 apply + 顶层 `sync_opencode_incremental` 入口（接受 `db_relpath` 参数，opencode/ngagent 共用）；含 10 个单元测试 + 1 个 smoke 集成测试（用真实 sqlite3 二进制当远端）。
 
 v1.5.0
 -------
