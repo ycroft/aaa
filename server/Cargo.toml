@@ -1,6 +1,6 @@
 [package]
 name = "aaa-hub"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [[bin]]
@@ -35,6 +35,7 @@ base64 = "0.22"
 rand = "0.8"
 semver = "1"
 async-trait = "0.1"
+aaa-wire = { path = "../wire" }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }

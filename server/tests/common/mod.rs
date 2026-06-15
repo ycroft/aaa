@@ -24,7 +24,7 @@ impl Notifier for CountingNotifier {
     async fn feedback_created(
         &self,
         _ticket_id: &str,
-        _fb: &aaa_hub::domain::feedback::NewFeedback,
+        _fb: &aaa_wire::feedback::CreateFeedbackRequest,
     ) {
         self.n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }

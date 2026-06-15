@@ -1,6 +1,6 @@
 use super::Notifier;
 use crate::config::EmailNotify;
-use crate::domain::feedback::NewFeedback;
+use aaa_wire::feedback::CreateFeedbackRequest as NewFeedback;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 

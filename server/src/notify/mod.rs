@@ -1,4 +1,4 @@
-use crate::domain::feedback::NewFeedback;
+use aaa_wire::feedback::CreateFeedbackRequest as NewFeedback;
 
 pub mod email;
 

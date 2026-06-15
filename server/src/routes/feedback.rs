@@ -1,4 +1,8 @@
-use crate::domain::feedback::*;
+use aaa_wire::feedback::{
+    AttachmentMeta, Category, CreateFeedbackRequest, CreateFeedbackResponse,
+    GetFeedbackResponse, Severity, Status,
+};
+use aaa_wire::SCHEMA_VERSION;
 use crate::error::AppError;
 use crate::state::AppState;
 use axum::extract::{Json, Multipart, Path, Query, State};
@@ -7,7 +11,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use base64::Engine;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 use tokio::io::AsyncWriteExt;
@@ -30,8 +34,8 @@ pub fn unlimited_router() -> Router<AppState> {
 
 pub async fn create_handler(
     State(s): State<AppState>,
-    Json(input): Json<NewFeedback>,
-) -> Result<(StatusCode, Json<CreateResponse>), AppError> {
+    Json(input): Json<CreateFeedbackRequest>,
+) -> Result<(StatusCode, Json<CreateFeedbackResponse>), AppError> {
     create(State(s), Json(input)).await
 }
 
@@ -40,32 +44,10 @@ pub struct ClaimQuery {
     pub token: String,
 }
 
-#[derive(Serialize)]
-pub struct AttachmentView {
-    pub id: String,
-    pub filename: String,
-    pub mime: String,
-    pub bytes: i64,
-}
-
-#[derive(Serialize)]
-pub struct FeedbackView {
-    pub id: String,
-    pub status: String,
-    pub category: String,
-    pub severity: Option<String>,
-    pub title: String,
-    pub description: String,
-    pub admin_note: Option<String>,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub attachments: Vec<AttachmentView>,
-}
-
 async fn create(
     State(s): State<AppState>,
-    Json(input): Json<NewFeedback>,
-) -> Result<(StatusCode, Json<CreateResponse>), AppError> {
+    Json(input): Json<CreateFeedbackRequest>,
+) -> Result<(StatusCode, Json<CreateFeedbackResponse>), AppError> {
     if input.title.trim().is_empty() || input.title.chars().count() > 80 {
         return Err(AppError::BadRequest(
             "title length must be 1..=80 chars".into(),
@@ -112,7 +94,8 @@ async fn create(
     });
     Ok((
         StatusCode::CREATED,
-        Json(CreateResponse {
+        Json(CreateFeedbackResponse {
+            schema_version: SCHEMA_VERSION,
             ticket_id: id,
             claim_token: claim,
         }),
@@ -123,7 +106,7 @@ async fn get_one(
     State(s): State<AppState>,
     Path(id): Path<String>,
     Query(q): Query<ClaimQuery>,
-) -> Result<Json<FeedbackView>, AppError> {
+) -> Result<Json<GetFeedbackResponse>, AppError> {
     let row = sqlx::query("SELECT * FROM feedback WHERE id = ?")
         .bind(&id)
         .fetch_optional(&s.db)
@@ -140,18 +123,22 @@ async fn get_one(
     .fetch_all(&s.db)
     .await?
     .into_iter()
-    .map(|r| AttachmentView {
+    .map(|r| AttachmentMeta {
         id: r.get("id"),
         filename: r.get("filename"),
         mime: r.get("mime"),
         bytes: r.get("bytes"),
     })
     .collect();
-    let view = FeedbackView {
+    let status_str: String = row.get("status");
+    let category_str: String = row.get("category");
+    let severity_opt: Option<String> = row.get("severity");
+    let view = GetFeedbackResponse {
+        schema_version: SCHEMA_VERSION,
         id: row.get("id"),
-        status: row.get("status"),
-        category: row.get("category"),
-        severity: row.get("severity"),
+        status: parse_status(&status_str),
+        category: parse_category(&category_str),
+        severity: parse_severity(severity_opt),
         title: row.get("title"),
         description: row.get("description"),
         admin_note: row.get("admin_note"),
@@ -264,4 +251,16 @@ pub(crate) fn ct_eq(a: &[u8], b: &[u8]) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+fn parse_category(s: &str) -> Category {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .unwrap_or(Category::Unknown)
+}
+fn parse_severity(s: Option<String>) -> Option<Severity> {
+    s.map(|v| serde_json::from_value(serde_json::Value::String(v)).unwrap_or(Severity::Unknown))
+}
+fn parse_status(s: &str) -> Status {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .unwrap_or(Status::Unknown)
 }
