@@ -251,7 +251,16 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 - **minor**（`0.1.0 → 0.2.0`）：新增 backend、新增 Tauri 命令、新增可见功能
 - **major**（`0.1.0 → 1.0.0`）：数据模型/命令面破坏性改动，或正式发布里程碑
 
-工作流：涉及代码/功能改动时，先更新这 4 个版本字段 + `release-notes.txt`，再 `git add`，把版本号变更、release notes 变更和功能变更放进**同一个 commit**。如果忘了，就用 `git commit --amend` 补回去（前提是该提交还没推到远端）。纯文档改动跳过版本号步骤即可。
+工作流：涉及代码/功能改动时，**先把代码改完、跑过测试**，把版本号 + release notes 留到最后一步——临 commit 前再做。纯文档改动跳过这一步。
+
+> **bump 前必须先同步 master，再决定下一个版本号。** 版本号字段（4 处）和 `release-notes.txt` 顶部是天然的冲突磁铁——任何同事并行合一个 PR 都会把这几行改掉。临 bump 前固定动作：
+>
+> 1. `git fetch origin master` 看远端 HEAD 是不是已经动过；
+> 2. 如果远端跑前面去了，先 `git pull --rebase origin master`（或者切到 master `--ff-only`）把基准对齐，然后从**远端 master 当前的版本号** + 1 patch 开始 bump，不要从本地陈旧的 base 算；
+> 3. **不在 master 分支也一样**：远端 master 是版本号事实来源，feature 分支也得 fetch 一下读 origin/master 的版本号当基准，不能拿本地 stale 的 HEAD 算下一版；
+> 4. bump 完 4 处版本字段 + 在 `release-notes.txt` **顶部**追加新版本块，跟功能改动塞进**同一个 commit**，然后 push。
+
+如果忘了在功能 commit 里 bump，发现时该 commit 还没推到远端就 `git commit --amend` 补；已推就再开一个 fix-up commit。
 
 > **每次完成修改都要 push 到远端。** 本仓库的"完成"包含 commit + `git push origin <branch>` 两步——只本地 commit 不推、或者推完忘了告知，都视为没完成。理由：分发产物（deb/rpm/AppImage/MSI/NSIS/portable）都基于远端 master 构建，本地未推的 commit 等同于没做过。原则上不要 force push 到 master；如果是修正未推 commit 的常规 amend，正常 push 即可。
 
