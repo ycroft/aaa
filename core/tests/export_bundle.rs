@@ -99,3 +99,30 @@ fn events_jsonl_has_one_row_per_node_with_kind_and_brief() {
     assert_eq!(first["i"], 0);
     assert!(first["kind"].as_str().is_some());
 }
+
+#[test]
+fn transcript_md_contains_per_node_headers() {
+    let provider = aaa_core::providers::find("claude-code").unwrap();
+    let Some(root) = provider.default_root() else { return; };
+    if !root.exists() { return; }
+    let sessions = match provider.list_sessions(&root) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return,
+    };
+    let one = sessions[0].source_path.clone();
+    let detail = provider.load_session(&PathBuf::from(&one)).unwrap();
+    if detail.nodes.is_empty() { return; }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let inputs = BundleInputs {
+        provider_id: "claude-code".into(),
+        source_paths: vec![PathBuf::from(&one)],
+        root: Some(root),
+        scope: ExportScope::Single,
+    };
+    let out = build_bundle(&inputs, tmp.path()).unwrap();
+    let path = out.bundle_dir.join(format!("sessions/{}/transcript.md", detail.summary.session_id));
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.starts_with("# "));
+    assert!(content.contains("\n## "));
+}

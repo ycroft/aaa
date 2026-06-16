@@ -110,8 +110,10 @@ pub fn build_bundle(inputs: &BundleInputs, target_dir: &Path) -> anyhow::Result<
         // events.jsonl
         let mut events_file = fs::File::create(session_subdir.join("events.jsonl"))?;
         write_events_jsonl(&detail, &mut events_file)?;
-        // transcript.md / raw.json — Tasks 5-6 will fill these in.
-        fs::write(session_subdir.join("transcript.md"), "")?;
+        // transcript.md
+        let mut transcript_file = fs::File::create(session_subdir.join("transcript.md"))?;
+        write_transcript_md(&detail, &mut transcript_file)?;
+        // raw.json — Task 6 will fill these in.
         fs::write(
             session_subdir.join("raw.json"),
             serde_json::to_string_pretty(&detail)?,
@@ -371,4 +373,58 @@ fn brief(s: &str, max_chars: usize) -> String {
     let trimmed: String = s.chars().take(max_chars).collect();
     let cleaned = trimmed.replace('\n', " ").replace('\r', " ");
     if s.chars().count() > max_chars { format!("{}…", cleaned) } else { cleaned }
+}
+
+const TOOL_RESULT_HEAD_LINES: usize = 20;
+const TOOL_RESULT_TAIL_LINES: usize = 5;
+
+fn write_transcript_md(detail: &crate::model::SessionDetail, file: &mut fs::File) -> anyhow::Result<()> {
+    use crate::model::MessagePart;
+    let s = &detail.summary;
+    writeln!(file, "# {}", s.title.clone().unwrap_or_else(|| s.session_id.clone()))?;
+    writeln!(file, "")?;
+    writeln!(file, "- session_id: `{}`", s.session_id)?;
+    writeln!(file, "- provider: `{}`", s.provider_id)?;
+    if let Some(c) = &s.cwd { writeln!(file, "- cwd: `{}`", c)?; }
+    if let Some(b) = &s.git_branch { writeln!(file, "- branch: `{}`", b)?; }
+    if let Some(t) = &s.started_at { writeln!(file, "- started_at: {}", t)?; }
+    if let Some(t) = &s.ended_at { writeln!(file, "- ended_at: {}", t)?; }
+    writeln!(file, "")?;
+
+    for (i, n) in detail.nodes.iter().enumerate() {
+        let kind = kind_str(&n.kind);
+        let ts = n.timestamp.clone().unwrap_or_default();
+        writeln!(file, "## [{}] {} {}", i, kind, ts)?;
+        if let Some(m) = &n.model { writeln!(file, "_model: {}_", m)?; }
+        writeln!(file, "")?;
+        for p in &n.parts {
+            match p {
+                MessagePart::Text { text } => writeln!(file, "{}\n", text)?,
+                MessagePart::Thinking { text } => writeln!(file, "> _thinking:_ {}\n", brief(text, 400))?,
+                MessagePart::ToolUse { name, input, tool_use_id } => {
+                    writeln!(file, "**tool_use** `{}` (id `{}`)\n```\n{}\n```\n", name, tool_use_id, brief(input, 400))?;
+                }
+                MessagePart::ToolResult { tool_use_id, content, is_error } => {
+                    let head_marker = if *is_error { "**tool_result (ERROR)**" } else { "**tool_result**" };
+                    writeln!(file, "{} ← `{}`\n```", head_marker, tool_use_id)?;
+                    writeln!(file, "{}", truncate_lines(content, TOOL_RESULT_HEAD_LINES, TOOL_RESULT_TAIL_LINES))?;
+                    writeln!(file, "```\n")?;
+                }
+                MessagePart::Image { media_type, bytes } => writeln!(file, "_image: {} ({} bytes)_\n", media_type, bytes)?,
+                MessagePart::Attachment { path, .. } => writeln!(file, "_attachment: {}_\n", path)?,
+                MessagePart::Note { text } => writeln!(file, "> _note:_ {}\n", brief(text, 400))?,
+            }
+        }
+    }
+    Ok(())
+}
+
+fn truncate_lines(s: &str, head: usize, tail: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    if lines.len() <= head + tail { return s.to_string(); }
+    let omitted = lines.len() - head - tail;
+    let mut out = lines[..head].join("\n");
+    out.push_str(&format!("\n[+{} more lines]\n", omitted));
+    out.push_str(&lines[lines.len() - tail..].join("\n"));
+    out
 }
