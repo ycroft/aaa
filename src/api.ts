@@ -4,6 +4,8 @@ import type {
   AppSettings,
   FeedbackInput,
   HubStatus,
+  JudgmentDetail,
+  JudgmentListItem,
   LocalTicket,
   LocalTickets,
   ProviderInfo,
@@ -16,6 +18,7 @@ import type {
   SessionDetail,
   SessionSummary,
   SkillUsage,
+  StartJudgmentArgs,
 } from "./types";
 
 export const api = {
@@ -60,6 +63,17 @@ export const api = {
     invoke<boolean>("check_command_exists", { cmd }),
   launchAgent: (cmdTemplate: string, workDir: string, promptContent: string) =>
     invoke<void>("launch_agent", { cmdTemplate, workDir, promptContent }),
+
+  // ---- Judger ----
+  judgerStart: (args: StartJudgmentArgs) =>
+    invoke<string>("judger_start", { args }),
+  judgerList: () => invoke<JudgmentListItem[]>("judger_list"),
+  judgerGet: (runId: string) =>
+    invoke<JudgmentDetail>("judger_get", { runId }),
+  judgerDelete: (runId: string) =>
+    invoke<void>("judger_delete", { runId }),
+  judgerOpenWorkdir: (runId: string) =>
+    invoke<void>("judger_open_workdir", { runId }),
 
   // ---- aaa-hub: silent on transport failure (returns Disconnected/null) ----
   hubStatus: () => invoke<HubStatus>("hub_status"),

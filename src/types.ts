@@ -159,34 +159,14 @@ export interface SkillUsage {
   node_ids?: string[];
 }
 
-export type AiMode = "none" | "agent" | "api";
-export type TemplateScope = "single" | "all";
-
-export interface AgentConfig {
-  id: string;
-  name: string;
-  cmd_template: string;
-  is_preset: boolean;
-}
-
-export interface PromptTemplate {
-  id: string;
-  name: string;
-  content: string;
-  scope: TemplateScope;
-}
-
-export interface AiSettings {
-  mode: AiMode;
-  selected_agent: string | null;
-  agents: AgentConfig[];
-  prompt_templates: PromptTemplate[];
+export interface JudgerSettings {
+  last_cmd: string | null;
 }
 
 export interface AppSettings {
   provider_roots: Record<string, string>;
   remotes: RemoteHostInfo[];
-  ai: AiSettings;
+  judger: JudgerSettings;
   ui: {
     theme: string;
     preview_chars: number;
@@ -195,6 +175,74 @@ export interface AppSettings {
     language: string;
   };
   hub: HubSettings;
+}
+
+// ---------------- Judger types (mirror `core/src/judger/schema.rs` + commands) ----------------
+
+export type Dimension = "context" | "tools" | "alignment" | "safety" | "unknown";
+export type Severity = "info" | "warn" | "critical" | "unknown";
+export type OverallLevel = "good" | "needs_improvement" | "poor" | "unknown";
+export type JudgmentStatus = "pending" | "done" | "failed";
+
+export interface SessionRef {
+  session_id: string;
+  source_path: string;
+  title: string | null;
+  cwd: string | null;
+}
+
+export interface JudgmentMeta {
+  run_id: string;
+  provider_id: string;
+  session: SessionRef;
+  started_at: string;
+  agent_cmd: string;
+  dimensions_enabled: Dimension[];
+  schema_version: number;
+}
+
+export interface Finding {
+  severity: Severity;
+  title: string;
+  detail: string;
+  evidence_node_ids: string[];
+}
+
+export interface DimensionResult {
+  dimension: Dimension;
+  findings: Finding[];
+}
+
+export interface Rubric {
+  schema_version: number;
+  overall: OverallLevel;
+  summary: string;
+  dimensions: DimensionResult[];
+  completed_at: string;
+}
+
+export interface JudgmentListItem {
+  meta: JudgmentMeta;
+  status: JudgmentStatus;
+}
+
+export interface JudgmentDetail {
+  meta: JudgmentMeta;
+  status: JudgmentStatus;
+  rubric: Rubric | null;
+  system_prompt: string;
+  prompt_txt: string;
+  result_raw: string | null;
+  workdir_path: string;
+  files: string[];
+}
+
+export interface StartJudgmentArgs {
+  provider_id: string;
+  session: SessionRef;
+  agent_cmd: string;
+  dimensions: Dimension[];
+  prompt_override: string | null;
 }
 
 export interface HubSettings {
