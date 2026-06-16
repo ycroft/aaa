@@ -73,7 +73,17 @@ pub enum MessagePart {
         tool_use_id: String,
         name: String,
         /// Input parameters as pretty-printed JSON for display.
+        ///
+        /// Always pure JSON — never includes the tool's stdout/result.
+        /// Providers that fold result text into the call (opencode) MUST put
+        /// it on `output` instead so downstream parsers (skill detection,
+        /// rich-tool detection, search) can `JSON.parse` this directly.
         input: String,
+        /// Tool's stdout/result text, when the provider folds the call+result
+        /// pair into a single record (opencode). `None` when the provider
+        /// emits a separate `ToolResult` part (claude-code).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output: Option<String>,
     },
     ToolResult {
         tool_use_id: String,

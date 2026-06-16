@@ -1,8 +1,9 @@
 // Detect file-modification tool calls and normalize their JSON input into a
 // shape the diff renderer can consume. Both claude-code and opencode store
 // the tool_use payload as a pretty-printed JSON string in `MessagePart.input`;
-// opencode additionally appends a "--- output ---" trailer with the tool's
-// stdout, which we strip before parsing.
+// the field is guaranteed pure JSON (opencode carries its tool stdout on the
+// dedicated `output` field instead, since v1.9), so this just JSON-parses and
+// validates.
 
 export type NormalizedEdit =
   | { kind: "replace"; oldText: string; newText: string; replaceAll: boolean }
@@ -25,14 +26,11 @@ export function isFileEditTool(name: string): boolean {
 }
 
 /**
- * Strip opencode's "--- output ---" trailer and parse the JSON head.
- * Returns null on malformed input rather than throwing — the caller should
- * fall back to raw display.
+ * Parse the tool-call input JSON. Returns null on malformed input rather than
+ * throwing — the caller should fall back to raw display.
  */
 function parseInputJson(input: string): unknown | null {
-  const marker = "\n\n--- output ---\n";
-  const head = input.includes(marker) ? input.slice(0, input.indexOf(marker)) : input;
-  const trimmed = head.trim();
+  const trimmed = input.trim();
   if (!trimmed) return null;
   try {
     return JSON.parse(trimmed);

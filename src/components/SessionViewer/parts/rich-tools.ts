@@ -2,32 +2,27 @@
 // with bespoke UI instead of raw JSON. The `edit` variant is the diff renderer
 // from `edit-detect.ts`; the others (bash / read / todos) are added here.
 //
-// Both providers serialize the tool input as pretty JSON, and opencode appends
-// a "\n\n--- output ---\n<stdout>" trailer (see opencode.rs::combine_tool).
-// We strip the trailer here so detectors see only the JSON head, but expose
-// the output text alongside so rich views can render it inline.
+// Both providers serialize the tool input as pretty JSON. opencode also folds
+// the call's stdout into the same record — since v1.9 we carry that on the
+// dedicated `MessagePart::ToolUse.output` field instead of stuffing it after a
+// "--- output ---" marker in `input`, so detectors can `JSON.parse(input)`
+// directly without any string surgery.
 
 import { detectFileEdit, type NormalizedFileEdit } from "./edit-detect";
 
-const OUTPUT_SEP = "\n\n--- output ---\n";
-
-interface ParsedPayload {
+interface ParsedArgs {
   args: Record<string, unknown> | null;
-  output: string | null;
 }
 
-function parsePayload(input: string): ParsedPayload {
-  const idx = input.indexOf(OUTPUT_SEP);
-  const head = idx >= 0 ? input.slice(0, idx) : input;
-  const tail = idx >= 0 ? input.slice(idx + OUTPUT_SEP.length) : null;
+function parseArgs(input: string): ParsedArgs {
   let args: Record<string, unknown> | null = null;
   try {
-    const parsed = JSON.parse(head.trim());
+    const parsed = JSON.parse(input.trim());
     if (parsed && typeof parsed === "object") args = parsed as Record<string, unknown>;
   } catch {
     /* ignore */
   }
-  return { args, output: tail };
+  return { args };
 }
 
 function pickStr(obj: Record<string, unknown>, ...keys: string[]): string | null {
@@ -64,10 +59,10 @@ export interface BashCall {
   output: string | null;
 }
 
-function detectBash(name: string, input: string): BashCall | null {
+function detectBash(name: string, input: string, output: string | null): BashCall | null {
   const lname = name.toLowerCase();
   if (lname !== "bash") return null;
-  const { args, output } = parsePayload(input);
+  const { args } = parseArgs(input);
   if (!args) return null;
   const command = pickStr(args, "command", "cmd");
   if (command == null) return null;
@@ -90,10 +85,10 @@ export interface ReadCall {
   output: string | null;
 }
 
-function detectRead(name: string, input: string): ReadCall | null {
+function detectRead(name: string, input: string, output: string | null): ReadCall | null {
   const lname = name.toLowerCase();
   if (lname !== "read") return null;
-  const { args, output } = parsePayload(input);
+  const { args } = parseArgs(input);
   if (!args) return null;
   const filePath = pickStr(args, "file_path", "filePath", "path");
   if (filePath == null) return null;
@@ -122,7 +117,7 @@ export interface TodoList {
 function detectTodos(name: string, input: string): TodoList | null {
   const lname = name.toLowerCase();
   if (lname !== "todowrite") return null;
-  const { args } = parsePayload(input);
+  const { args } = parseArgs(input);
   if (!args || !Array.isArray(args["todos"])) return null;
   const todos: TodoItem[] = [];
   for (const raw of args["todos"] as unknown[]) {
@@ -148,12 +143,16 @@ export type RichTool =
   | { kind: "read"; data: ReadCall }
   | { kind: "todos"; data: TodoList };
 
-export function detectRichTool(name: string, input: string): RichTool | null {
+export function detectRichTool(
+  name: string,
+  input: string,
+  output: string | null,
+): RichTool | null {
   const edit = detectFileEdit(name, input);
   if (edit) return { kind: "edit", data: edit };
-  const bash = detectBash(name, input);
+  const bash = detectBash(name, input, output);
   if (bash) return { kind: "bash", data: bash };
-  const read = detectRead(name, input);
+  const read = detectRead(name, input, output);
   if (read) return { kind: "read", data: read };
   const todos = detectTodos(name, input);
   if (todos) return { kind: "todos", data: todos };

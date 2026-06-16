@@ -426,8 +426,14 @@ fn write_transcript_md(detail: &crate::model::SessionDetail, file: &mut fs::File
             match p {
                 MessagePart::Text { text } => writeln!(file, "{}\n", text)?,
                 MessagePart::Thinking { text } => writeln!(file, "> _thinking:_ {}\n", brief(text, 400))?,
-                MessagePart::ToolUse { name, input, tool_use_id } => {
+                MessagePart::ToolUse { name, input, output, tool_use_id } => {
                     writeln!(file, "**tool_use** `{}` (id `{}`)\n```\n{}\n```\n", name, tool_use_id, brief(input, 400))?;
+                    if let Some(out) = output {
+                        // opencode collapses the call+result pair into a
+                        // single record; surface the result text underneath
+                        // so the markdown reads the same as the in-app view.
+                        writeln!(file, "_output:_\n```\n{}\n```\n", brief(out, 400))?;
+                    }
                 }
                 MessagePart::ToolResult { tool_use_id, content, is_error } => {
                     let head_marker = if *is_error { "**tool_result (ERROR)**" } else { "**tool_result**" };

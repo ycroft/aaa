@@ -85,7 +85,8 @@ function renderRich(rich: RichTool) {
 
 function ToolUseView({ part }: { part: Extract<MessagePart, { kind: "tool_use" }> }) {
   const t = useT();
-  const rich = detectRichTool(part.name, part.input);
+  const output = part.output ?? null;
+  const rich = detectRichTool(part.name, part.input, output);
   const [showRaw, setShowRaw] = useState(false);
   const showRich = rich != null && !showRaw;
 
@@ -106,7 +107,16 @@ function ToolUseView({ part }: { part: Extract<MessagePart, { kind: "tool_use" }
           </button>
         )}
       </div>
-      {showRich && rich ? renderRich(rich) : <pre className="body"><Highlight text={part.input} /></pre>}
+      {showRich && rich ? (
+        renderRich(rich)
+      ) : (
+        <>
+          <pre className="body"><Highlight text={part.input} /></pre>
+          {output != null && (
+            <pre className="body tool-output"><Highlight text={output} /></pre>
+          )}
+        </>
+      )}
     </div>
   );
 }

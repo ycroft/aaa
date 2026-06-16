@@ -876,8 +876,12 @@ fn part_from_value(v: &Value) -> Option<MessagePart> {
     }
 }
 
-/// Render a `tool` part into a ToolUse-style entry. Output text is appended
-/// to the input section so a single MessagePart still carries both halves.
+/// Render a `tool` part into a ToolUse-style entry. The tool's stdout/result
+/// is carried on `output` (a separate field on `MessagePart::ToolUse`), so the
+/// `input` payload stays pure JSON — that's what `skill_detect`, the rich-tool
+/// detector, and message search all rely on. Failed calls still flatten down
+/// to `ToolResult` since opencode doesn't carry success/failure on the same
+/// row shape.
 fn combine_tool(v: &Value, name: &str) -> MessagePart {
     let call_id = v
         .get("callID")
@@ -908,24 +912,20 @@ fn combine_tool(v: &Value, name: &str) -> MessagePart {
         };
     }
 
-    // For completed tools, emit the ToolUse view; the human-readable output is
-    // included as the `input` payload so the viewer shows it without needing a
-    // separate ToolResult node (opencode doesn't model that pairing).
+    // Successful call: emit the ToolUse view; the human-readable output is
+    // carried on the dedicated `output` field. opencode doesn't model the
+    // call/result pair as separate records, so this lets the viewer show
+    // both halves on one node without polluting `input`.
     let output = state
         .get("output")
         .and_then(Value::as_str)
-        .map(|s| s.to_string());
-    let mut input = input_str;
-    if let Some(out) = output {
-        if !out.trim().is_empty() {
-            input.push_str("\n\n--- output ---\n");
-            input.push_str(&out);
-        }
-    }
+        .map(str::to_string)
+        .filter(|s| !s.trim().is_empty());
     MessagePart::ToolUse {
         tool_use_id: call_id,
         name: name.to_string(),
-        input,
+        input: input_str,
+        output,
     }
 }
 

@@ -212,6 +212,7 @@ pub fn walk_session_nodes(nodes: &[SessionNode], detector: &mut SkillDetector<'_
                         tool_use_id,
                         name,
                         input,
+                        ..
                     } = part
                     {
                         if !is_skill_tool_name(name) {
@@ -318,6 +319,7 @@ mod tests {
                 tool_use_id: tool_use_id.into(),
                 name: "Skill".into(),
                 input: input.into(),
+                output: None,
             }],
             usage: None,
             cumulative_context_tokens: None,
@@ -337,6 +339,7 @@ mod tests {
                 // lowercase — opencode's tool name shape
                 name: "skill".into(),
                 input: format!("{{\"name\": \"{}\"}}", skill_name),
+                output: None,
             }],
             usage: None,
             cumulative_context_tokens: None,
@@ -479,5 +482,39 @@ mod tests {
             &mut det,
         );
         assert_eq!(det.into_usage_rows().len(), 1);
+    }
+
+    /// Regression: opencode used to fold tool stdout into the same `input`
+    /// string as the JSON args, which broke `extract_skill_id_from_input`'s
+    /// `serde_json::from_str(input)` and silently dropped every successful
+    /// assistant-side skill invocation. The fix moved stdout onto a dedicated
+    /// `output` field, so `input` is once again pure JSON. This test pins
+    /// that invariant: the detector must still pick up the call (and record
+    /// the node id, so the per-node chip renders) when `output` is populated.
+    #[test]
+    fn assistant_skill_tool_with_output_still_detected() {
+        let reg = SkillRegistry::default();
+        let mut det = SkillDetector::new(&reg);
+        let node = SessionNode {
+            id: "a1".into(),
+            parent_id: None,
+            kind: NodeKind::Assistant,
+            timestamp: None,
+            model: None,
+            parts: vec![MessagePart::ToolUse {
+                tool_use_id: "call_1".into(),
+                name: "skill".into(),
+                input: r#"{"name": "test-skill"}"#.into(),
+                output: Some("ok — tool finished".into()),
+            }],
+            usage: None,
+            cumulative_context_tokens: None,
+            raw_size_bytes: 0,
+        };
+        walk_session_nodes(&[node], &mut det);
+        let rows = det.into_usage_rows();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].skill_id, "test-skill");
+        assert_eq!(rows[0].node_ids, vec!["a1".to_string()]);
     }
 }

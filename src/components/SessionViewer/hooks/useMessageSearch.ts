@@ -15,6 +15,10 @@ function nodeHaystack(node: SessionNode): string {
       case "tool_use":
         buf.push(p.name);
         buf.push(p.input);
+        // opencode carries the tool's stdout on `output`; include it so users
+        // can search for text the tool printed (file contents, error frames,
+        // etc.) just like they did before output got split off `input`.
+        if (p.output) buf.push(p.output);
         break;
       case "tool_result":
         buf.push(p.content);

@@ -1,4 +1,5 @@
 import type {
+  MessagePart,
   SessionDetail,
   SessionNode,
   SessionSummary,
@@ -28,17 +29,15 @@ export function isHumanUserTurn(node: SessionNode): boolean {
 }
 
 // Tool inputs are JSON-pretty-printed by both claude_code and opencode providers.
-// opencode additionally folds the tool's stdout/result into the same string with
-// a "--- output ---" separator (see core/src/providers/opencode.rs::combine_tool).
-const OUTPUT_SEP = "\n\n--- output ---\n";
-
-export function parseToolInput(input: string): { args: any | null; output: string | null } {
-  const sep = input.indexOf(OUTPUT_SEP);
-  const head = sep >= 0 ? input.slice(0, sep) : input;
-  const tail = sep >= 0 ? input.slice(sep + OUTPUT_SEP.length) : null;
+// opencode also folds the call's stdout into the same record — since v1.9 that
+// goes on `MessagePart::ToolUse.output`, not appended to `input`. So `input`
+// JSON-parses cleanly and `output` is read straight off the part.
+export function parseToolInput(
+  part: Extract<MessagePart, { kind: "tool_use" }>,
+): { args: any | null; output: string | null } {
   let args: any = null;
-  try { args = JSON.parse(head); } catch { /* ignore */ }
-  return { args, output: tail };
+  try { args = JSON.parse(part.input); } catch { /* ignore */ }
+  return { args, output: part.output ?? null };
 }
 
 // Pick the first string field that exists. Lets us tolerate the snake_case
@@ -164,7 +163,7 @@ export function computeAgentStats(
         // oldString, newString, replaceAll). Tool *names* also differ in case
         // (Read vs read), so we normalize via toLowerCase().
         const lname = p.name.toLowerCase();
-        const { args, output } = parseToolInput(p.input);
+        const { args, output } = parseToolInput(p);
         const path = pickStr(args, "file_path", "filePath", "path");
 
         if (lname === "read") {

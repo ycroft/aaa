@@ -648,6 +648,9 @@ fn parse_block(b: &Value) -> Option<MessagePart> {
                 tool_use_id: id,
                 name,
                 input,
+                // Claude-shape providers always emit ToolResult as a separate
+                // part; the call leg never carries result text.
+                output: None,
             })
         }
         "tool_result" => {

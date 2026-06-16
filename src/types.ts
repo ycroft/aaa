@@ -45,7 +45,7 @@ export type NodeKind =
 export type MessagePart =
   | { kind: "text"; text: string }
   | { kind: "thinking"; text: string }
-  | { kind: "tool_use"; tool_use_id: string; name: string; input: string }
+  | { kind: "tool_use"; tool_use_id: string; name: string; input: string; output?: string | null }
   | { kind: "tool_result"; tool_use_id: string; content: string; is_error: boolean }
   | { kind: "image"; media_type: string; bytes: number }
   | { kind: "attachment"; path: string; mime: string | null }

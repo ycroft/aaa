@@ -130,6 +130,7 @@ mod tests {
                 tool_use_id: tool_use_id.into(),
                 name: "Skill".into(),
                 input: format!("{{\"skill\":\"{}\"}}", skill),
+                output: None,
             }],
             usage: None,
             cumulative_context_tokens: None,
