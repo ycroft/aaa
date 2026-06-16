@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod hub;
 pub mod hub_commands;
+pub mod judger_commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -61,6 +62,11 @@ pub fn run() {
             hub_commands::list_local_tickets,
             hub_commands::check_update,
             hub_commands::refresh_hub,
+            judger_commands::judger_start,
+            judger_commands::judger_list,
+            judger_commands::judger_get,
+            judger_commands::judger_delete,
+            judger_commands::judger_open_workdir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
