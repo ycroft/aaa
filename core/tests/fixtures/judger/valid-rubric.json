@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "overall": "needs_improvement",
+  "summary": "Agent over-read several files but stayed on task.",
+  "dimensions": [
+    {
+      "dimension": "context",
+      "findings": [
+        {
+          "severity": "warn",
+          "title": "Read entire 4KLoC file for one function",
+          "detail": "Read tool used on src/big.rs line 1-4000 just to inspect fn `parse`.",
+          "evidence_node_ids": ["node-12"]
+        }
+      ]
+    },
+    {
+      "dimension": "safety",
+      "findings": []
+    }
+  ],
+  "completed_at": "2026-06-16T12:34:56Z"
+}

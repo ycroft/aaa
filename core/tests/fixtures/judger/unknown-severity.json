@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "overall": "good",
+  "summary": "ok",
+  "dimensions": [
+    {
+      "dimension": "context",
+      "findings": [
+        {
+          "severity": "blocker",
+          "title": "x",
+          "detail": "y",
+          "evidence_node_ids": []
+        }
+      ]
+    }
+  ],
+  "completed_at": "2026-06-16T12:34:56Z"
+}
