@@ -562,12 +562,14 @@ pub fn launch_agent(
     cmd_template: String,
     work_dir: String,
     prompt_content: String,
+    cleanup_workdir: Option<bool>,
 ) -> Result<(), String> {
     info!(
-        "cmd launch_agent template={:?} work_dir={} prompt_bytes={}",
+        "cmd launch_agent template={:?} work_dir={} prompt_bytes={} cleanup={:?}",
         cmd_template,
         work_dir,
-        prompt_content.len()
+        prompt_content.len(),
+        cleanup_workdir,
     );
     let work_path = PathBuf::from(&work_dir);
     std::fs::create_dir_all(&work_path).map_err(err_to_string)?;
@@ -624,10 +626,18 @@ pub fn launch_agent(
     };
 
     let work_dir_owned = work_dir.clone();
-    std::thread::spawn(move || {
-        let _ = child.wait();
-        let _ = std::fs::remove_dir_all(&work_dir_owned);
-    });
+    if cleanup_workdir.unwrap_or(true) {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&work_dir_owned);
+        });
+    } else {
+        // Caller (e.g. judger) wants the workdir to persist after the agent
+        // exits — still reap the child to avoid zombies, but leave files alone.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+    }
 
     Ok(())
 }
