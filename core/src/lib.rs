@@ -10,4 +10,5 @@ pub mod skill_detect;
 pub mod skills;
 pub mod stats;
 pub mod export;
+pub mod judger;
 pub mod tps;
