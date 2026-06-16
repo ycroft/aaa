@@ -372,6 +372,9 @@ export const en: Catalog = {
     peak_ctx_hint: "Peak context window observed",
     skill_pill_hint: "Used skill: {id}",
     skill_more: "+{n} more",
+    context: {
+      judge: "Judge this session",
+    },
   },
   viewer: {
     loading: "Loading session…",

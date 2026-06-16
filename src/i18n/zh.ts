@@ -370,6 +370,9 @@ export const zh = {
     peak_ctx_hint: "观察到的上下文窗口峰值",
     skill_pill_hint: "使用了 skill：{id}",
     skill_more: "另 +{n} 个",
+    context: {
+      judge: "评估此会话",
+    },
   },
   viewer: {
     loading: "正在加载会话…",

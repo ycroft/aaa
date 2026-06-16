@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SessionFilter, SessionSummary } from "../types";
 import { formatRelativeTime, formatTokens, shortPath } from "../format";
 import { useT } from "../i18n";
@@ -46,6 +46,38 @@ function resolveTimeWindow(filter: SessionFilter): { from: number | null; to: nu
 
 export function SessionList({ sessions, filter, activeId, onPick, busy, onJudgeSession }: Props) {
   const t = useT();
+  // Right-click context menu state. Stored at App-relative coordinates and
+  // rendered as a fixed-position popover near the cursor. window.confirm()
+  // used to stand in here but Tauri's WebView either auto-confirms or yields
+  // empty strings depending on the platform — neither matches the design
+  // spec of "show a menu, let the user pick".
+  const [menu, setMenu] = useState<
+    | { x: number; y: number; session: SessionSummary }
+    | null
+  >(null);
+
+  // Close on click-outside (any pointerdown that isn't ours) and on Esc.
+  // Pointerdown rather than click so the menu disappears the moment the
+  // user starts a new gesture, even before mouseup — feels snappier.
+  useEffect(() => {
+    if (!menu) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest(".session-context-menu")) return;
+      setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    // Capture phase so we run before any onClick on the row beneath.
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
   const filtered = useMemo(() => {
     const f = filter.search.trim().toLowerCase();
     const cwd = filter.cwd;
@@ -101,14 +133,7 @@ export function SessionList({ sessions, filter, activeId, onPick, busy, onJudgeS
               onJudgeSession
                 ? (e) => {
                     e.preventDefault();
-                    // V1 placeholder until we wire a proper <ContextMenu>:
-                    // a synchronous confirm so the user can opt in/out per
-                    // row. The right-click → "Judge" hook is the contract,
-                    // the prompt UI can be upgraded later without changing
-                    // the prop surface.
-                    if (window.confirm(t("menu.judger") + "?")) {
-                      onJudgeSession(s);
-                    }
+                    setMenu({ x: e.clientX, y: e.clientY, session: s });
                   }
                 : undefined
             }
@@ -144,6 +169,27 @@ export function SessionList({ sessions, filter, activeId, onPick, busy, onJudgeS
           </div>
         ))}
       </div>
+      {menu && onJudgeSession && (
+        <div
+          className="session-context-menu"
+          // Fixed-position so the menu lives outside the scrolling list
+          // container and isn't clipped by `overflow: hidden` on the sidebar.
+          style={{ position: "fixed", top: menu.y, left: menu.x, zIndex: 200 }}
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const s = menu.session;
+              setMenu(null);
+              onJudgeSession(s);
+            }}
+          >
+            {t("session_list.context.judge")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
