@@ -113,9 +113,17 @@ pub(crate) fn write_watermarks(conn: &Connection, wm: &Watermarks) -> rusqlite::
     Ok(())
 }
 
+/// Minimum SQLite version we require on the remote. The SQL exec path needs:
+///   - `-json` flag → 3.33.0 (2020-08-14)
+///   - `PRAGMA query_only = 1;` → 3.8.0 (defense-in-depth; older versions
+///     silently ignore unknown pragmas, so this isn't a hard requirement)
+/// 3.33.0 is the binding constraint. Anything older falls back to L3.
+const MIN_SQLITE_MAJOR: u32 = 3;
+const MIN_SQLITE_MINOR: u32 = 33;
+
 /// Probe whether the remote has a working `sqlite3` binary new enough to take
 /// the `-json` flag (3.33+).  Returns `true` only when the command runs, exits
-/// 0, and the output contains a SemVer-ish version string.
+/// 0, and reports a version >= 3.33.0.
 pub async fn probe_sqlite3(fs: &mut dyn RemoteFs) -> bool {
     let res = fs
         .exec(
@@ -127,20 +135,43 @@ pub async fn probe_sqlite3(fs: &mut dyn RemoteFs) -> bool {
     match res {
         Ok(out) => {
             let s = String::from_utf8_lossy(&out);
-            let ok = s.split_whitespace().next().map_or(false, |tok| {
-                tok.split('.').next().and_then(|n| n.parse::<u32>().ok()).is_some()
-            });
-            if ok {
-                info!("remote sqlite3 detected: {}", s.trim());
-            } else {
-                warn!(
-                    "remote sqlite3 probe: command exited 0 but stdout did not look like a version: {:?} \
-                     ({} bytes) — falling back to full SFTP",
-                    s,
-                    out.len()
-                );
+            let first_tok = s.split_whitespace().next().unwrap_or("");
+            let mut parts = first_tok.split('.');
+            let major = parts.next().and_then(|n| n.parse::<u32>().ok());
+            let minor = parts.next().and_then(|n| n.parse::<u32>().ok());
+            match (major, minor) {
+                (Some(maj), Some(min))
+                    if (maj, min) >= (MIN_SQLITE_MAJOR, MIN_SQLITE_MINOR) =>
+                {
+                    info!(
+                        "remote sqlite3 detected: {} (version {}.{} >= required {}.{})",
+                        s.trim(),
+                        maj,
+                        min,
+                        MIN_SQLITE_MAJOR,
+                        MIN_SQLITE_MINOR
+                    );
+                    true
+                }
+                (Some(maj), Some(min)) => {
+                    warn!(
+                        "remote sqlite3 too old: detected {}.{} but incremental sync needs >= {}.{} \
+                         (for `-json` flag, added in 3.33.0). Full output: {:?}. \
+                         Falling back to full SFTP — upgrade sqlite3 on the remote to enable incremental.",
+                        maj, min, MIN_SQLITE_MAJOR, MIN_SQLITE_MINOR, s.trim()
+                    );
+                    false
+                }
+                _ => {
+                    warn!(
+                        "remote sqlite3 probe: command exited 0 but stdout did not look like a version: {:?} \
+                         ({} bytes) — falling back to full SFTP",
+                        s,
+                        out.len()
+                    );
+                    false
+                }
             }
-            ok
         }
         Err(e) => {
             // Spell out the failure mode so the log makes the diagnosis obvious
@@ -177,11 +208,18 @@ pub async fn probe_sqlite3(fs: &mut dyn RemoteFs) -> bool {
     }
 }
 
-/// Build the SQL script piped into `sqlite3 -readonly -json <db>` via stdin.
+/// Build the SQL script piped into `sqlite3 -json <db>` via stdin.
 /// Watermarks are baked into the SQL (i64 → safe to format).
+///
+/// `PRAGMA query_only = 1;` enforces "no writes from this connection" without
+/// needing the `-readonly` CLI flag (which only exists on sqlite3 >= 3.8.0).
+/// On versions older than 3.8.0 the pragma is silently ignored, but we never
+/// reach this code path on such versions because `probe_sqlite3` rejects
+/// anything below 3.33.0.
 pub(crate) fn build_query_script(wm: &Watermarks) -> String {
     format!(
-        "SELECT '{sec_session}';\n\
+        "PRAGMA query_only = 1;\n\
+         SELECT '{sec_session}';\n\
          SELECT id, parent_id, directory, title, time_created, time_updated, version, share_url \
          FROM session WHERE time_updated > {wm_session} ORDER BY time_updated;\n\
          SELECT '{sec_message}';\n\
@@ -442,7 +480,12 @@ pub async fn sync_opencode_incremental(
 
     let remote_db = format!("{}/{}", remote_root.trim_end_matches('/'), db_relpath);
     let stdin = build_query_script(&wm);
-    let argv = ["sqlite3", "-readonly", "-json", remote_db.as_str()];
+    // No `-readonly` flag: it only exists on sqlite3 >= 3.8.0, and even on
+    // newer versions we already enforce read-only behaviour via
+    // `PRAGMA query_only = 1;` at the top of the SQL script (see
+    // `build_query_script`). Our SQL is also pure SELECT, so even if both
+    // mechanisms were absent the connection would never write.
+    let argv = ["sqlite3", "-json", remote_db.as_str()];
 
     ctx.check_cancel()?;
     let stdout = fs.exec(&argv, stdin.as_bytes(), MAX_STDOUT).await?;
@@ -576,6 +619,39 @@ mod tests {
             Ok(b"3.40.0 2022-11-16 ...\n".to_vec()),
         );
         assert!(probe_sqlite3(&mut fs).await);
+    }
+
+    #[tokio::test]
+    async fn probe_returns_true_on_minimum_required_sqlite() {
+        let mut fs = FakeExecFs::new().with_response(
+            "sh -c command -v sqlite3 >/dev/null && sqlite3 -version",
+            Ok(b"3.33.0 2020-08-14 ...\n".to_vec()),
+        );
+        assert!(probe_sqlite3(&mut fs).await);
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_sqlite_too_old_for_json_flag() {
+        // 3.32.x is below our 3.33.0 minimum (the version that introduced -json).
+        // Without this gate the actual exec would later error with
+        // "unknown option: -json", which is a confusing place to fail.
+        let mut fs = FakeExecFs::new().with_response(
+            "sh -c command -v sqlite3 >/dev/null && sqlite3 -version",
+            Ok(b"3.32.3 2020-06-18 ...\n".to_vec()),
+        );
+        assert!(!probe_sqlite3(&mut fs).await);
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_ancient_sqlite_pre_readonly_flag() {
+        // 3.7.x is below 3.8.0 (which introduced -readonly). Even with our
+        // current code dropping -readonly, 3.7 doesn't have -json either,
+        // so the version gate keeps us out of trouble.
+        let mut fs = FakeExecFs::new().with_response(
+            "sh -c command -v sqlite3 >/dev/null && sqlite3 -version",
+            Ok(b"3.7.17 2013-05-20 ...\n".to_vec()),
+        );
+        assert!(!probe_sqlite3(&mut fs).await);
     }
 
     #[tokio::test]
@@ -718,7 +794,7 @@ mod tests {
 [{\"id\":\"p1\",\"message_id\":\"m1\",\"type\":\"text\",\"tool\":null,\"time_created\":16,\"data\":\"\"}]\n";
 
         let mut fs = FakeExecFs::new().with_response(
-            "sqlite3 -readonly -json /remote/opencode.db",
+            "sqlite3 -json /remote/opencode.db",
             Ok(stdout.to_vec()),
         );
         let mut ctx = SyncContext::noop();
