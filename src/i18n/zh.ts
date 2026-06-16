@@ -350,6 +350,8 @@ export const zh = {
     msgs_pill: "{n} 条消息",
     peak_ctx: "ctx {tokens}",
     peak_ctx_hint: "观察到的上下文窗口峰值",
+    skill_pill_hint: "使用了 skill：{id}",
+    skill_more: "另 +{n} 个",
   },
   viewer: {
     loading: "正在加载会话…",
@@ -425,6 +427,7 @@ export const zh = {
       cache_tokens_hint: "cache_read / cache_create token",
       enter_subagent: "进入子代理 {label}",
       filter_to_tool: "仅看含 {name} 的行",
+      skill_chip_hint: "Skill：{id}（来源：{source}）",
       tooltip_no_tools: "无工具调用",
       tooltip_no_skills: "无 Skill 调用",
       tooltip_no_files_read: "未读取任何文件",

@@ -352,6 +352,8 @@ export const en: Catalog = {
     msgs_pill: "{n} msgs",
     peak_ctx: "ctx {tokens}",
     peak_ctx_hint: "Peak context window observed",
+    skill_pill_hint: "Used skill: {id}",
+    skill_more: "+{n} more",
   },
   viewer: {
     loading: "Loading session…",
@@ -427,6 +429,7 @@ export const en: Catalog = {
       cache_tokens_hint: "cache_read / cache_create tokens",
       enter_subagent: "Enter subagent {label}",
       filter_to_tool: "Show only rows with {name}",
+      skill_chip_hint: "Skill: {id} (source: {source})",
       tooltip_no_tools: "No tool calls",
       tooltip_no_skills: "No skill calls",
       tooltip_no_files_read: "No files read",

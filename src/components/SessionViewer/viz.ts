@@ -1,4 +1,4 @@
-import type { SessionNode, SubAgentSession } from "../../types";
+import type { SessionNode, SkillSource, SkillUsage, SubAgentSession } from "../../types";
 import { lookupContextWindow } from "../../model-context";
 import { effectiveContextTokens } from "./stats";
 
@@ -12,6 +12,12 @@ export function bandFor(ratio: number): CtxBand {
   if (ratio >= 0.60) return "warn";
   if (ratio >= 0.40) return "mid";
   return "cool";
+}
+
+export interface NodeSkillRef {
+  id: string;
+  name?: string;
+  source: SkillSource;
 }
 
 export interface NodeViz {
@@ -28,12 +34,16 @@ export interface NodeViz {
   subagentLabel: string | null;
   /** Subagent agent_id if known — lets the chip jump straight in. */
   subagentId: string | null;
+  /** Skills attached to this node — populated from the SkillUsage rows
+   *  whose `node_ids` reference this node. Empty when none. */
+  skills: NodeSkillRef[];
 }
 
 export function buildNodeViz(
   nodes: SessionNode[],
   peakSession: number,
   subagentByToolUseId: Map<string, SubAgentSession>,
+  skillsByNodeId: Map<string, NodeSkillRef[]>,
 ): { byId: Map<string, NodeViz>; toolUniverse: Array<{ name: string; count: number }> } {
   const byId = new Map<string, NodeViz>();
   const universeCounts = new Map<string, number>();
@@ -84,6 +94,7 @@ export function buildNodeViz(
       toolCounts,
       subagentLabel,
       subagentId,
+      skills: skillsByNodeId.get(n.id) ?? [],
     });
 
     if (ctx != null && ctx > highest) highest = ctx;
@@ -95,4 +106,26 @@ export function buildNodeViz(
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
   return { byId, toolUniverse };
+}
+
+/// Group SkillUsage rows by node_id for fast lookup during NodeViz build.
+/// A skill row that lacks `node_ids` (e.g. an Assistant-source row from a
+/// pre-1.7 backend) is skipped — there's nothing to attach it to.
+export function buildSkillsByNodeId(rows: SkillUsage[]): Map<string, NodeSkillRef[]> {
+  const out = new Map<string, NodeSkillRef[]>();
+  for (const r of rows) {
+    const ids = r.node_ids ?? [];
+    if (ids.length === 0) continue;
+    const ref: NodeSkillRef = {
+      id: r.skill_id,
+      name: r.skill_name ?? undefined,
+      source: r.source ?? "assistant",
+    };
+    for (const nid of ids) {
+      const arr = out.get(nid);
+      if (arr) arr.push(ref);
+      else out.set(nid, [ref]);
+    }
+  }
+  return out;
 }

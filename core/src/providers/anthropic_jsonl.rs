@@ -25,6 +25,10 @@ use crate::model::{
     MessagePart, NodeKind, SessionDetail, SessionNode, SessionSummary, SubAgentKind,
     SubAgentSession, TokenUsage,
 };
+use crate::skill_detect::{
+    extract_skill_id_from_input, is_skill_tool_name, walk_session_nodes, SkillDetector,
+};
+use crate::skills::SkillRegistry;
 use crate::stats::SkillUsage;
 
 // ============================================================================
@@ -33,7 +37,15 @@ use crate::stats::SkillUsage;
 
 /// Walk `<root>/<project>/*.jsonl` and produce a summary per session,
 /// newest first. Tags each summary with the given `provider_id`.
-pub fn list_sessions(root: &Path, provider_id: &str) -> Result<Vec<SessionSummary>> {
+///
+/// `skill_roots_fn` is called per-session with the session's `cwd` to build a
+/// fingerprint registry, so `summary.used_skills` reflects both user-level
+/// (`~/.claude/skills`) and project-level (`<cwd>/.claude/skills`) skills.
+pub fn list_sessions(
+    root: &Path,
+    provider_id: &str,
+    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
+) -> Result<Vec<SessionSummary>> {
     if !root.exists() {
         debug!("list_sessions: root {:?} does not exist", root);
         return Ok(Vec::new());
@@ -53,7 +65,7 @@ pub fn list_sessions(root: &Path, provider_id: &str) -> Result<Vec<SessionSummar
             if p.extension().and_then(|s| s.to_str()) != Some("jsonl") {
                 continue;
             }
-            match scan_summary(&p, provider_id) {
+            match scan_summary(&p, provider_id, skill_roots_fn) {
                 Ok(summary) => out.push(summary),
                 Err(e) => warn!("scan_summary skipped {:?}: {}", p, e),
             }
@@ -65,13 +77,28 @@ pub fn list_sessions(root: &Path, provider_id: &str) -> Result<Vec<SessionSummar
 }
 
 /// Parse one session file plus its sub-agents into a full SessionDetail.
-pub fn load_session(source_path: &Path, provider_id: &str) -> Result<SessionDetail> {
+pub fn load_session(
+    source_path: &Path,
+    provider_id: &str,
+    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
+) -> Result<SessionDetail> {
     debug!("load_session source_path={:?}", source_path);
-    let (summary, nodes) = parse_session_file(source_path, provider_id)?;
+    let (mut summary, nodes) = parse_session_file(source_path, provider_id)?;
     let subagents = load_subagents(source_path, provider_id).unwrap_or_else(|e| {
         warn!("load_subagents failed for {:?}: {}", source_path, e);
         Vec::new()
     });
+    // Resolve used_skills via the unified detector — same code path the
+    // SkillUsage view uses, so list/timeline/stats can never disagree.
+    let cwd = summary.cwd.as_deref().map(Path::new);
+    let reg = SkillRegistry::build(&skill_roots_fn(cwd));
+    let mut det = SkillDetector::new(&reg);
+    walk_session_nodes(&nodes, &mut det);
+    for sa in &subagents {
+        walk_session_nodes(&sa.nodes, &mut det);
+    }
+    summary.used_skills = det.used_skill_ids();
+
     let mut detail = SessionDetail {
         summary,
         nodes,
@@ -84,27 +111,16 @@ pub fn load_session(source_path: &Path, provider_id: &str) -> Result<SessionDeta
     Ok(detail)
 }
 
-/// Skill-usage extraction for any provider that emits structured
-/// `name == "Skill"` tool_use records (claude-code, code-agent-3x).
-/// See `core/src/stats.rs` module docs for the design rationale.
-pub fn collect_skill_usage(detail: &SessionDetail) -> Vec<SkillUsage> {
-    let mut acc: HashMap<String, Acc> = HashMap::new();
-    scan_nodes(&detail.nodes, &mut acc);
+/// Skill-usage extraction. Routes both passes through the unified
+/// [`SkillDetector`] so the same logic feeds the list view, the timeline,
+/// and the per-skill stats.
+pub fn collect_skill_usage(detail: &SessionDetail, reg: &SkillRegistry) -> Vec<SkillUsage> {
+    let mut det = SkillDetector::new(reg);
+    walk_session_nodes(&detail.nodes, &mut det);
     for sa in &detail.subagents {
-        scan_nodes(&sa.nodes, &mut acc);
+        walk_session_nodes(&sa.nodes, &mut det);
     }
-    let mut out: Vec<SkillUsage> = acc
-        .into_iter()
-        .map(|(skill_id, a)| SkillUsage {
-            skill_id,
-            count: a.count,
-            error_count: a.error_count,
-            first_at: a.first_at,
-            last_at: a.last_at,
-        })
-        .collect();
-    out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.skill_id.cmp(&b.skill_id)));
-    out
+    det.into_usage_rows()
 }
 
 // ============================================================================
@@ -133,6 +149,7 @@ fn parse_session_file(path: &Path, provider_id: &str) -> Result<(SessionSummary,
         total_output_tokens: 0,
         peak_context_tokens: 0,
         source_path: path.to_string_lossy().into_owned(),
+        used_skills: Vec::new(),
     };
 
     let mut nodes: Vec<SessionNode> = Vec::new();
@@ -690,7 +707,11 @@ fn parse_block(b: &Value) -> Option<MessagePart> {
     }
 }
 
-fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
+fn scan_summary(
+    p: &Path,
+    provider_id: &str,
+    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
+) -> Result<SessionSummary> {
     // Cheap pass: only inspect a few fields so listing many sessions stays fast.
     let f = File::open(p).with_context(|| format!("open {:?}", p))?;
     let reader = BufReader::new(f);
@@ -712,9 +733,15 @@ fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
         total_output_tokens: 0,
         peak_context_tokens: 0,
         source_path: p.to_string_lossy().into_owned(),
+        used_skills: Vec::new(),
     };
     let mut peak: u64 = 0;
     let mut first_user_text: Option<String> = None;
+    // Lazily built once cwd is known so project-level skill roots resolve
+    // correctly. The registry lives here for the whole scan; the detector is
+    // re-borrowed each line.
+    let mut reg: Option<SkillRegistry> = None;
+    let mut det_obs: Vec<SkillObs> = Vec::new();
 
     for line in reader.lines().flatten() {
         if line.trim().is_empty() {
@@ -732,11 +759,15 @@ fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
         if let Some(b) = v.get("gitBranch").and_then(Value::as_str) {
             summary.git_branch = Some(b.to_string());
         }
-        if let Some(t) = v.get("timestamp").and_then(Value::as_str) {
+        let line_ts = v
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if let Some(t) = &line_ts {
             if summary.started_at.is_none() {
-                summary.started_at = Some(t.to_string());
+                summary.started_at = Some(t.clone());
             }
-            summary.ended_at = Some(t.to_string());
+            summary.ended_at = Some(t.clone());
         }
         match v.get("type").and_then(Value::as_str) {
             Some("ai-title") => {
@@ -744,22 +775,27 @@ fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
             }
             Some("user") => {
                 summary.message_count += 1;
-                if first_user_text.is_none() {
-                    if let Some(c) = v
-                        .get("message")
-                        .and_then(|m| m.get("content"))
-                        .and_then(Value::as_str)
-                    {
-                        first_user_text = Some(c.to_string());
+                // user.message.content can be either a string (top-level
+                // chat) or an array of content blocks (slash-command
+                // expansions, tool-result wrappers, …). Pull the first text
+                // body either way.
+                if let Some(text) = extract_user_text(&v) {
+                    if first_user_text.is_none() {
+                        first_user_text = Some(text.clone());
                     }
+                    if reg.is_none() {
+                        let cwd = summary.cwd.as_deref().map(Path::new);
+                        reg = Some(SkillRegistry::build(&skill_roots_fn(cwd)));
+                    }
+                    det_obs.push(SkillObs::UserText {
+                        text,
+                        timestamp: line_ts.clone(),
+                    });
                 }
             }
             Some("assistant") => {
                 summary.message_count += 1;
-                if let Some(u) = v
-                    .get("message")
-                    .and_then(|m| m.get("usage"))
-                {
+                if let Some(u) = v.get("message").and_then(|m| m.get("usage")) {
                     let usage = parse_usage(u).unwrap_or_default();
                     summary.total_input_tokens += usage.input_tokens;
                     summary.total_output_tokens += usage.output_tokens;
@@ -768,11 +804,70 @@ fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
                         peak = ctx;
                     }
                 }
+                if let Some(blocks) = v
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(Value::as_array)
+                {
+                    for b in blocks {
+                        if b.get("type").and_then(Value::as_str) != Some("tool_use") {
+                            continue;
+                        }
+                        let name = b.get("name").and_then(Value::as_str).unwrap_or("");
+                        if !is_skill_tool_name(name) {
+                            continue;
+                        }
+                        let tool_use_id = b
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        // Both Claude Code (`{skill: ...}`) and any future
+                        // shape with `{name: ...}` get unified here.
+                        let input = b.get("input").cloned().unwrap_or(Value::Null);
+                        let input_str = serde_json::to_string(&input).unwrap_or_default();
+                        if let Some(sid) = extract_skill_id_from_input(&input_str) {
+                            det_obs.push(SkillObs::AssistantTool {
+                                tool_use_id,
+                                skill_id: sid,
+                                timestamp: line_ts.clone(),
+                            });
+                        }
+                    }
+                }
             }
             _ => {}
         }
     }
     summary.peak_context_tokens = peak;
+
+    // Replay accumulated observations into a SkillDetector to populate
+    // used_skills. We can't drive the detector inline because the registry
+    // is built lazily once cwd is known, which may be after the first user
+    // line — replaying keeps the order tidy.
+    let reg_built = reg.unwrap_or_default();
+    let mut det = SkillDetector::new(&reg_built);
+    for obs in det_obs {
+        match obs {
+            SkillObs::UserText { text, timestamp } => {
+                det.observe_user_text(None, timestamp.as_deref(), &text);
+            }
+            SkillObs::AssistantTool {
+                tool_use_id,
+                skill_id,
+                timestamp,
+            } => {
+                det.observe_assistant_skill_tool(
+                    None,
+                    timestamp.as_deref(),
+                    &tool_use_id,
+                    &skill_id,
+                );
+            }
+        }
+    }
+    summary.used_skills = det.used_skill_ids();
+
     if summary.title.is_none() {
         if let Some(t) = first_user_text {
             let mut s: String = t.chars().take(80).collect();
@@ -788,90 +883,46 @@ fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
     Ok(summary)
 }
 
-// ============================================================================
-//  Internal: skill_usage scanner (moved from stats.rs)
-// ============================================================================
-
-/// Mutable accumulator while we're scanning nodes. Becomes a `SkillUsage`
-/// at the end. Splitting it out keeps the merge step a plain map walk.
-#[derive(Default)]
-struct Acc {
-    count: u32,
-    error_count: u32,
-    first_at: Option<String>,
-    last_at: Option<String>,
+/// Internal observation shape used inside `scan_summary` to defer detector
+/// invocation until the registry has been built.
+enum SkillObs {
+    UserText {
+        text: String,
+        timestamp: Option<String>,
+    },
+    AssistantTool {
+        tool_use_id: String,
+        skill_id: String,
+        timestamp: Option<String>,
+    },
 }
 
-fn scan_nodes(nodes: &[SessionNode], acc: &mut HashMap<String, Acc>) {
-    // First pass: collect (tool_use_id -> skill_id) for all `Skill` ToolUse
-    // parts, plus the count + timestamps. Second pass: walk ToolResult parts
-    // and bump error_count on the matching skill_id when is_error is true.
-    //
-    // Two passes (instead of pairing inline) keeps ordering robust — in
-    // Claude Code's jsonl, the assistant's tool_use block and the
-    // following user's tool_result usually arrive in adjacent records, but
-    // we don't want to rely on that.
-    let mut tool_use_to_skill: HashMap<String, String> = HashMap::new();
-
-    for node in nodes {
-        for part in &node.parts {
-            if let MessagePart::ToolUse {
-                tool_use_id,
-                name,
-                input,
-            } = part
-            {
-                if name != "Skill" {
-                    continue;
-                }
-                let Some(skill_id) = parse_skill_id(input) else {
-                    // Skipping rather than counting under a synthetic key:
-                    // a `Skill` tool_use with no `input.skill` field is malformed
-                    // and wouldn't help any consumer of these stats.
-                    continue;
-                };
-                tool_use_to_skill.insert(tool_use_id.clone(), skill_id.clone());
-
-                let entry = acc.entry(skill_id).or_default();
-                entry.count += 1;
-                if let Some(ts) = node.timestamp.as_ref() {
-                    if entry.first_at.is_none() {
-                        entry.first_at = Some(ts.clone());
-                    }
-                    entry.last_at = Some(ts.clone());
-                }
-            }
+/// Pull the first text body out of `user.message.content`. Handles both
+/// shapes Claude Code emits:
+///   * string — the typical "user typed a chat message" line.
+///   * array of `{type: "text", text: "..."}` blocks — emitted by slash-
+///     command expansions and some tool_result wrappers.
+///
+/// Returns the trimmed text or `None` when no text block is present.
+fn extract_user_text(line: &Value) -> Option<String> {
+    let content = line.get("message").and_then(|m| m.get("content"))?;
+    if let Some(s) = content.as_str() {
+        if !s.trim().is_empty() {
+            return Some(s.to_string());
         }
+        return None;
     }
-
-    for node in nodes {
-        for part in &node.parts {
-            if let MessagePart::ToolResult {
-                tool_use_id,
-                is_error,
-                ..
-            } = part
-            {
-                if !is_error {
-                    continue;
-                }
-                if let Some(skill_id) = tool_use_to_skill.get(tool_use_id) {
-                    if let Some(entry) = acc.get_mut(skill_id) {
-                        entry.error_count += 1;
+    if let Some(blocks) = content.as_array() {
+        for b in blocks {
+            if b.get("type").and_then(Value::as_str) == Some("text") {
+                if let Some(t) = b.get("text").and_then(Value::as_str) {
+                    if !t.trim().is_empty() {
+                        return Some(t.to_string());
                     }
                 }
             }
         }
     }
+    None
 }
 
-/// `input` is a pretty-printed JSON string produced by the Claude Code
-/// provider. We only read the `skill` field — `args`, when present, is
-/// payload that doesn't affect the count.
-fn parse_skill_id(input: &str) -> Option<String> {
-    let v: Value = serde_json::from_str(input).ok()?;
-    v.get("skill")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .filter(|s| !s.is_empty())
-}

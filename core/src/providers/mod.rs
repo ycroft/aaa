@@ -3,7 +3,7 @@
 //! Each backend (Claude Code, opencode, …) implements [`SessionProvider`].
 //! New providers can be added without touching the frontend or commands.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::model::{ProviderInfo, SessionDetail, SessionSummary};
 use crate::stats::SkillUsage;
@@ -51,6 +51,18 @@ pub trait SessionProvider: Send + Sync {
     /// structured `name == "Skill"` tool_use records override this to do
     /// the real collection (typically delegating to a shared helper).
     fn skill_usage(&self, _detail: &SessionDetail) -> Vec<SkillUsage> {
+        Vec::new()
+    }
+
+    /// Roots to scan for `<root>/<id>/SKILL.md` fingerprints. Default empty
+    /// (no fingerprint detection). `cwd` is the session's working directory
+    /// when known — providers use it to look up project-level skills (e.g.
+    /// `<cwd>/.opencode/skills`).
+    ///
+    /// Implementations should filter out non-existent paths so callers don't
+    /// have to. Order matters when there are duplicates: the registry keeps
+    /// the first occurrence wins, so put the most authoritative root first.
+    fn skill_roots(&self, _cwd: Option<&Path>) -> Vec<PathBuf> {
         Vec::new()
     }
 

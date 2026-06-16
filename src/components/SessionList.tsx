@@ -100,6 +100,23 @@ export function SessionList({ sessions, filter, activeId, onPick, busy }: Props)
             <div className="meta">
               <span title={s.cwd ?? ""}>{shortPath(s.cwd, 40)}</span>
               {s.git_branch && <span className="pill">{s.git_branch}</span>}
+              {(s.used_skills ?? []).slice(0, 3).map((sid) => (
+                <span
+                  key={`skill-${sid}`}
+                  className="pill skill-pill"
+                  title={t("session_list.skill_pill_hint", { id: sid })}
+                >
+                  🧩 {sid}
+                </span>
+              ))}
+              {(s.used_skills?.length ?? 0) > 3 && (
+                <span
+                  className="pill skill-pill more"
+                  title={(s.used_skills ?? []).slice(3).join(", ")}
+                >
+                  {t("session_list.skill_more", { n: (s.used_skills?.length ?? 0) - 3 })}
+                </span>
+              )}
               <span>{formatRelativeTime(s.ended_at ?? s.started_at, t)}</span>
               <span className="pill">{t("session_list.msgs_pill", { n: s.message_count })}</span>
               <span className="pill" title={t("session_list.peak_ctx_hint")}>

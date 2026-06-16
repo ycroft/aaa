@@ -341,6 +341,16 @@ button { font-family: inherit; }
   padding: 1px 6px;
   font-family: var(--font-mono);
 }
+.session-row .meta .pill.skill-pill {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
+  color: var(--text-1);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.session-row .meta .pill.skill-pill.more {
+  background: var(--bg-2);
+  border-color: var(--border-1);
+  color: var(--text-3);
+}
 
 /* ---- Main pane ---- */
 .main {
@@ -1744,6 +1754,33 @@ mark.search-hit {
   background: transparent;
   color: var(--text-3);
   cursor: default;
+}
+
+/* skill chips — shown alongside tool chips when a node triggered a skill */
+.node-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  align-items: center;
+}
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  user-select: none;
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-3));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text-1);
+}
+.skill-chip.src-assistant {
+  background: color-mix(in srgb, var(--ok, #66bb6a) 15%, var(--bg-3));
+  border-color: color-mix(in srgb, var(--ok, #66bb6a) 35%, transparent);
 }
 
 /* tool filter dropdown */

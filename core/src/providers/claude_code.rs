@@ -4,7 +4,7 @@
 //! Code Agent 3.x (and any future Anthropic-protocol client). This file is
 //! just the provider-identity shell.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
@@ -30,12 +30,25 @@ impl SessionProvider for ClaudeCodeProvider {
         vec!["{home}/.claude/projects"]
     }
     fn list_sessions(&self, root: &PathBuf) -> Result<Vec<SessionSummary>> {
-        anthropic_jsonl::list_sessions(root, ID)
+        anthropic_jsonl::list_sessions(root, ID, &|cwd| self.skill_roots(cwd))
     }
     fn load_session(&self, source_path: &PathBuf) -> Result<SessionDetail> {
-        anthropic_jsonl::load_session(source_path, ID)
+        anthropic_jsonl::load_session(source_path, ID, &|cwd| self.skill_roots(cwd))
     }
     fn skill_usage(&self, detail: &SessionDetail) -> Vec<SkillUsage> {
-        anthropic_jsonl::collect_skill_usage(detail)
+        let cwd = detail.summary.cwd.as_deref().map(Path::new);
+        let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd));
+        anthropic_jsonl::collect_skill_usage(detail, &reg)
+    }
+    fn skill_roots(&self, cwd: Option<&Path>) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        if let Some(home) = dirs::home_dir() {
+            out.push(home.join(".claude").join("skills"));
+        }
+        if let Some(cwd) = cwd {
+            out.push(cwd.join(".claude").join("skills"));
+        }
+        out.retain(|p| p.exists());
+        out
     }
 }

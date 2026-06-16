@@ -13,36 +13,73 @@
 //! with a default that returns empty, so each provider decides whether and
 //! how it can extract structured skill records.
 //!
-//! Currently:
-//! * `claude-code` and `code-agent-3x` share the implementation in
+//! Two detection modes are available:
+//! * **Assistant-source**: scan `tool_use { name == "Skill" }` records — only
+//!   Claude-Code-shape providers emit these. Implemented in
 //!   [`crate::providers::anthropic_jsonl::collect_skill_usage`].
-//! * `opencode` returns the default empty — its skills are injected as
-//!   plain user-text and aren't reliably distinguishable from regular
-//!   pasted prompts without a fingerprint library. See git history of
-//!   this file for the heuristic plan if/when we want to add it.
+//! * **User-source**: build a [`crate::skills::SkillRegistry`] from the
+//!   provider's `skill_roots()` and fingerprint-match user-text part heads.
+//!   Catches Claude Code `/skill-name` slash invocations and opencode's
+//!   built-in/external skill injections.
 
 use serde::{Deserialize, Serialize};
 
 use crate::model::SessionDetail;
 
-/// One row of the skill-usage report. Aggregated by `skill_id` across the
-/// parent session and all its sub-agents.
+/// Where a skill invocation came from.
+///
+/// `User` — fingerprint match on a user-text part (Claude Code `/skill-name`
+/// slash invocation, or any opencode skill injection).
+/// `Assistant` — structured `tool_use { name: "Skill" }` record (only Claude
+/// Code emits these today).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillSource {
+    User,
+    Assistant,
+}
+
+impl Default for SkillSource {
+    fn default() -> Self {
+        SkillSource::Assistant
+    }
+}
+
+/// One row of the skill-usage report. Aggregated by `(skill_id, source)`
+/// across the parent session and all its sub-agents — User and Assistant
+/// invocations of the same skill stay as separate rows so the UI can show
+/// who triggered it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillUsage {
-    /// Skill identifier as it appears in the tool input (e.g.
-    /// `superpowers:brainstorming` or a bare name like `prd`). We don't
-    /// strip namespaces — users sometimes invoke with and without one,
-    /// and merging them would hide that.
+    /// Skill identifier — directory name on disk for User-source rows, or the
+    /// `input.skill` value for Assistant-source rows. We don't strip
+    /// namespaces — users sometimes invoke with and without one, and merging
+    /// would hide that.
     pub skill_id: String,
+    /// Display name from the SKILL.md frontmatter `name:` field. None for
+    /// Assistant-source rows where we couldn't match the id back to a known
+    /// SKILL.md.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_name: Option<String>,
+    /// Whether the trigger was a user-text fingerprint or an assistant
+    /// tool_use. Defaults to Assistant for backwards compatibility with
+    /// payloads written before this field existed.
+    #[serde(default)]
+    pub source: SkillSource,
     /// Total invocations.
     pub count: u32,
     /// How many of those invocations had a paired tool_result with `is_error == true`.
+    /// Always 0 for User-source rows (no tool_result pairing possible).
     pub error_count: u32,
     /// First and last timestamp seen for this skill, ISO-8601 strings as
     /// produced by the provider. Either may be `None` if the source node had
     /// no timestamp.
     pub first_at: Option<String>,
     pub last_at: Option<String>,
+    /// Node ids where this skill was detected, in occurrence order. Used by
+    /// the UI to attach a per-node chip.
+    #[serde(default)]
+    pub node_ids: Vec<String>,
 }
 
 /// Collect skill-usage rows from a session detail.
@@ -78,6 +115,7 @@ mod tests {
             total_output_tokens: 0,
             peak_context_tokens: 0,
             source_path: "/tmp/x".into(),
+            used_skills: Vec::new(),
         }
     }
 
@@ -118,9 +156,11 @@ mod tests {
     }
 
     #[test]
-    fn opencode_returns_empty_for_now() {
+    fn provider_dispatch_returns_empty_for_unknown() {
+        // The dispatcher returns empty for any provider id we don't know
+        // about — protects callers from panics on stale data.
         let detail = SessionDetail {
-            summary: empty_summary("opencode"),
+            summary: empty_summary("unknown-provider"),
             nodes: vec![skill_node("n1", None, "t1", "prd")],
             subagents: vec![],
             tps_session: None,

@@ -1,3 +1,24 @@
+v1.7.2
+-------
+- 修复 claude-code USER-only skill 触发（`/skill-name`）在会话列表里不显示 chip 的问题：scan_summary 之前只读 string 形态的 user.message.content，slash 触发产出的是 array 形态（[{type:"text", text:...}]），改为同时支持两种形态。
+- 修复 opencode 调用 `tool=skill` 时左侧列表与节点视图都不显示 skill 名字的问题：opencode 通过 assistant tool_use 发起的 skill 调用（input 形如 `{"name": "..."}`）之前完全未抓取，现在与 claude-code 走同一条识别路径。
+- 重构 skill 检测为单一管道 `core/src/skill_detect.rs`：`SkillDetector` 接受 `observe_user_text` / `observe_assistant_skill_tool` / `observe_tool_result` 三种事件，输出 `used_skill_ids()` 给列表视图、`into_usage_rows()` 给时间线/统计视图。`walk_session_nodes` 一个函数适配所有 provider 的 SessionNode。tool name 比较改为 case-insensitive（`Skill`/`skill` 都识别），input 解析同时认 `{skill: ...}` 与 `{name: ...}` 两种形状。
+- 清理掉 `stats.rs` 里 `UserSkillAcc` / `scan_user_text_skills` / `collect_used_skill_ids` / `first_text_part` 重复实现，以及 `anthropic_jsonl.rs` 里 `AssistantAcc` / `scan_nodes` / `parse_skill_id` 重复实现——所有 skill 检测点都汇到 `skill_detect` 一处。
+- 单元测试：新增 8 个 `skill_detect` 测试覆盖两端事件与去重；`stats` 模块旧的 `UserSkillAcc` 相关测试删除（已被 detector 测试覆盖）。
+
+v1.7.1
+-------
+- 修复 Claude Code `/skill-name` slash 触发后 user-text 开头会被插入 `Base directory for this skill: <path>` 前导行，导致 `starts_with` 严格前缀匹配错过指纹的问题。改为在 user-text 前 8KB 内做子串匹配（UTF-8 边界安全），opencode 注入式 skill（指纹位于偏移 0）继续命中，Claude Code 带前导行的也能命中。
+
+v1.7.0
+-------
+- 跨 provider skill 检测：基于磁盘上 SKILL.md 前 128 字节（去 frontmatter、按 UTF-8 边界对齐）建立指纹库，扫所有 USER 节点首段文本，命中即算一次 skill 使用。同时覆盖：opencode 注入式 skill、Claude Code `/skill-name` slash 触发、以及原有 Claude Code 结构化 `Skill` ToolUse。
+- USER 触发与 ASSISTANT 触发分别记成两条 `SkillUsage` 行（`source: User | Assistant`），UI 能区分谁发起的；同一会话同一 skill 由两端各触发一次会被分别计数。
+- skill 根目录扫描点：claude-code 看 `~/.claude/skills/` 与 `<cwd>/.claude/skills/`；code-agent-3x 看 `~/.cac/skills/` 与 `<cwd>/.cac/skills/`；opencode 多扫 `~/.config/opencode/skills/`、`<cwd>/.opencode/skills/`、`~/.claude/skills/`、`~/.agents/skills/`（与 opencode 自身的外部 skill 加载路径一致）。skill 名取 frontmatter `name:` 字段，缺则回退目录名。
+- 数据模型：`SessionSummary` 新增 `used_skills: Vec<String>` 字段（serde default，旧 payload 无感），列表视图据此显示 🧩 skill chip；`SkillUsage` 增加 `skill_name`、`source`、`node_ids` 字段，节点视图据 node_ids 在右侧 node-side 渲染 SkillChips。
+- 列表与时间线 UI：SessionList 行尾显示前 3 个 skill chip，超出折叠为 `+N more`；SessionViewer 节点右侧的 `node-side` 区在 ToolChips 下方追加 `SkillChips`，🧩 表 USER 触发，🤖 表 ASSISTANT 触发。
+- 单元测试：skills 模块 11 个测试覆盖 frontmatter 剥离、UTF-8 边界截断、name 提取、registry 去重、leading-whitespace 容忍；stats 模块新增 USER 指纹匹配 / 空 registry 跳过 / opencode 不误识别 ASSISTANT ToolUse 三个用例。
+
 v1.6.1
 -------
 - 引入 aaa-wire crate：客户端与 aaa-hub 服务端共享前向兼容的 JSON wire schema

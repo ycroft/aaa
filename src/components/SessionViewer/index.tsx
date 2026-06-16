@@ -18,7 +18,7 @@ import {
 import { useT } from "../../i18n";
 
 import { computeAgentStats, computeSessionTotals, isHumanUserTurn } from "./stats";
-import { buildNodeViz, type NodeViz } from "./viz";
+import { buildNodeViz, buildSkillsByNodeId, type NodeViz } from "./viz";
 import { useMessageSearch } from "./hooks/useMessageSearch";
 import { useSkillUsage } from "./hooks/useSkillUsage";
 
@@ -27,6 +27,7 @@ import { CtxBar } from "./parts/CtxBar";
 import { Metric } from "./parts/Metric";
 import { PartView } from "./parts/PartView";
 import { ToolChips } from "./parts/ToolChips";
+import { SkillChips } from "./parts/SkillChips";
 import { ToolFilterDropdown } from "./parts/ToolFilterDropdown";
 import {
   ToolBreakdownTooltip,
@@ -150,6 +151,8 @@ export function SessionViewer({
 
   const skillUsage = useSkillUsage(session?.summary ?? null);
 
+  const skillsByNodeId = useMemo(() => buildSkillsByNodeId(skillUsage), [skillUsage]);
+
   const subagents = session?.subagents ?? [];
 
   // Map the parent's `Agent` tool_use_id → subagent, used both to render the
@@ -194,9 +197,9 @@ export function SessionViewer({
     const peak = activeAgent.summary.peak_context_tokens || 0;
     // Subagent chip annotation only applies on the parent timeline.
     const map = activeAgent.subagent ? new Map<string, SubAgentSession>() : subagentByToolUseId;
-    const { byId, toolUniverse } = buildNodeViz(activeAgent.nodes, peak, map);
+    const { byId, toolUniverse } = buildNodeViz(activeAgent.nodes, peak, map, skillsByNodeId);
     return { vizById: byId, toolUniverse };
-  }, [activeAgent, subagentByToolUseId]);
+  }, [activeAgent, subagentByToolUseId, skillsByNodeId]);
 
   const peakCtx = activeAgent?.summary.peak_context_tokens ?? 0;
 
@@ -703,6 +706,7 @@ export function SessionViewer({
                   onPick={(name) => setToolFilter(new Set([name]))}
                   onEnterSubagent={(agentId) => enterSubagent(agentId, n.id)}
                 />
+                <SkillChips viz={viz} />
               </div>
             </div>
           );

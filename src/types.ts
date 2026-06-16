@@ -29,6 +29,9 @@ export interface SessionSummary {
   total_output_tokens: number;
   peak_context_tokens: number;
   source_path: string;
+  /** Sorted, deduped skill ids detected on this session — populated during
+   *  the summary scan. Optional / absent on payloads from older builds. */
+  used_skills?: string[];
 }
 
 export type NodeKind =
@@ -129,16 +132,31 @@ export const MAIN_AGENT_KEY = "<main>";
 
 /// One row of the skill-usage report (mirrors `aaa_core::stats::SkillUsage`).
 ///
-/// Phase-1 detection only fires for `claude-code` sessions, where each skill
-/// invocation is a structured `tool_use { name: "Skill" }`. For other
-/// backends this comes back empty until the heuristic phase-2 detector lands
-/// — see `core/src/stats.rs` for the plan.
+/// Two detection paths populate this:
+///   * **Assistant-source** — `tool_use { name: "Skill" }` records emitted by
+///     Claude Code / Code Agent 3.x.
+///   * **User-source** — fingerprint match against on-disk `SKILL.md` heads.
+///     Catches Claude Code `/skill-name` slash invocations and opencode's
+///     skill-as-user-text injection.
+///
+/// Same skill triggered by both paths produces two rows (one per `source`)
+/// so the UI can display who initiated it.
+export type SkillSource = "user" | "assistant";
+
 export interface SkillUsage {
   skill_id: string;
+  /** Pretty display name from the SKILL.md `name:` frontmatter, when known. */
+  skill_name?: string | null;
+  /** Defaults to "assistant" on payloads from builds before this field
+   *  existed — that matches the legacy behaviour. */
+  source?: SkillSource;
   count: number;
   error_count: number;
   first_at: string | null;
   last_at: string | null;
+  /** Node ids where this skill was detected, in occurrence order. Used to
+   *  render a per-node chip on the timeline. */
+  node_ids?: string[];
 }
 
 export type AiMode = "none" | "agent" | "api";

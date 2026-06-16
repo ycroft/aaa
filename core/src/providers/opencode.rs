@@ -20,7 +20,7 @@ use crate::model::{
     SubAgentSession, TokenUsage,
 };
 use crate::providers::SessionProvider;
-
+use crate::stats::SkillUsage;
 const PROVIDER_ID: &str = "opencode";
 const DB_FILE: &str = "opencode.db";
 const NGAGENT_DB_SUBDIR: &str = "db";
@@ -114,6 +114,23 @@ impl SessionProvider for OpencodeProvider {
                                 db_path,
                                 sessions.len()
                             );
+                            // Augment each summary with `used_skills`.
+                            // Per-session registry build is cheap; the
+                            // unified detector handles both user-text
+                            // fingerprints and assistant-side `tool=skill`
+                            // calls so list/timeline/stats can never
+                            // disagree.
+                            for s in sessions.iter_mut() {
+                                let cwd = s.cwd.as_deref().map(Path::new);
+                                let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd));
+                                match collect_used_skills(&conn, &s.session_id, &reg) {
+                                    Ok(ids) => s.used_skills = ids,
+                                    Err(e) => warn!(
+                                        "opencode collect_used_skills sid={} failed: {}",
+                                        s.session_id, e
+                                    ),
+                                }
+                            }
                             out.append(&mut sessions);
                         }
                     }
@@ -133,6 +150,37 @@ impl SessionProvider for OpencodeProvider {
         let res = load_session_detail(&conn, &db_path, &session_id);
         if let Err(ref e) = res { warn!("load_session_detail FAILED: {}", e); }
         res
+    }
+
+    fn skill_roots(&self, cwd: Option<&Path>) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        if let Some(home) = dirs::home_dir() {
+            // Global opencode skills.
+            out.push(home.join(".config").join("opencode").join("skills"));
+            // External roots opencode auto-loads (unless OPENCODE_DISABLE_*
+            // env vars are set; we don't try to mirror those toggles since we
+            // only care about which fingerprints could plausibly have been
+            // injected).
+            out.push(home.join(".claude").join("skills"));
+            out.push(home.join(".agents").join("skills"));
+        }
+        if let Some(cwd) = cwd {
+            // Project-level opencode skills.
+            out.push(cwd.join(".opencode").join("skills"));
+        }
+        out.retain(|p| p.exists());
+        out
+    }
+
+    fn skill_usage(&self, detail: &SessionDetail) -> Vec<SkillUsage> {
+        let cwd = detail.summary.cwd.as_deref().map(Path::new);
+        let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd));
+        let mut det = crate::skill_detect::SkillDetector::new(&reg);
+        crate::skill_detect::walk_session_nodes(&detail.nodes, &mut det);
+        for sa in &detail.subagents {
+            crate::skill_detect::walk_session_nodes(&sa.nodes, &mut det);
+        }
+        det.into_usage_rows()
     }
 }
 
@@ -411,6 +459,7 @@ fn summarise_session(conn: &Connection, db: &Path, row: &SessionRow) -> Result<S
         total_output_tokens: total_output,
         peak_context_tokens: peak_ctx,
         source_path: make_source_path(db, &row.id),
+        used_skills: Vec::new(),
     })
 }
 
@@ -420,7 +469,16 @@ fn load_session_detail(conn: &Connection, db: &Path, sid: &str) -> Result<Sessio
         .with_context(|| format!("session {} not found", sid))?;
     debug!("load_session_detail found session row sid={}", sid);
 
-    let (summary, nodes) = build_summary_and_nodes(conn, db, &srow)?;
+    let (mut summary, nodes) = build_summary_and_nodes(conn, db, &srow)?;
+
+    // Populate used_skills via the unified detector — same code path that
+    // produces SkillUsage rows for the timeline view, so the list-view chip,
+    // the per-node chip, and the stats panel can never disagree.
+    let cwd = summary.cwd.as_deref().map(Path::new);
+    let reg = crate::skills::SkillRegistry::build(&OpencodeProvider.skill_roots(cwd));
+    let mut det = crate::skill_detect::SkillDetector::new(&reg);
+    crate::skill_detect::walk_session_nodes(&nodes, &mut det);
+    summary.used_skills = det.used_skill_ids();
 
     // Sub-agents — opencode persists them as separate `session` rows whose
     // `parent_id` points to this session. Each child is spawned by the parent's
@@ -574,6 +632,7 @@ fn build_summary_and_nodes(
         total_output_tokens: total_output,
         peak_context_tokens: peak_ctx,
         source_path: make_source_path(db, &srow.id),
+        used_skills: Vec::new(),
     };
 
     Ok((summary, nodes))
@@ -961,4 +1020,73 @@ fn truncate_chars(s: &str, max: usize) -> String {
         out.push('…');
     }
     out
+}
+
+/// Collect skill ids referenced by a session — both user-text fingerprint
+/// matches and assistant-side `tool=skill` calls — via two cheap SQL queries
+/// fed into the unified [`crate::skill_detect::SkillDetector`]. Used by
+/// `list_sessions` to populate `summary.used_skills` without materialising
+/// every session's parts as `MessagePart`s.
+///
+/// Caller passes a `SkillRegistry` so the user-text leg knows what to match;
+/// the assistant leg works regardless of registry contents (the skill_id is
+/// in the tool input, no fingerprint needed).
+fn collect_used_skills(
+    conn: &Connection,
+    session_id: &str,
+    reg: &crate::skills::SkillRegistry,
+) -> Result<Vec<String>> {
+    let mut det = crate::skill_detect::SkillDetector::new(reg);
+
+    // User-text fingerprints. Skip synthetic shims (tool-result placeholders).
+    // 4 KB substr bounds JSON cost — fingerprints are 128 bytes, plus a bit
+    // of preamble for Claude Code.
+    let mut q1 = conn.prepare(
+        "SELECT substr(p.data, 1, 4096) FROM part p \
+         JOIN message m ON p.message_id = m.id \
+         WHERE m.session_id = ?1 \
+           AND json_extract(m.data, '$.role') = 'user' \
+           AND json_extract(p.data, '$.type') = 'text' \
+           AND IFNULL(json_extract(p.data, '$.synthetic'), 0) = 0 \
+         ORDER BY p.time_created",
+    )?;
+    let mut rows = q1.query([session_id])?;
+    while let Some(r) = rows.next()? {
+        let raw: String = r.get(0)?;
+        let v: Value = match serde_json::from_str(&raw) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(text) = v.get("text").and_then(Value::as_str) {
+            det.observe_user_text(None, None, text);
+        }
+    }
+
+    // Assistant-side `tool=skill` invocations. opencode collapses the
+    // call+result pair into one row; we read `state.input.name` for the
+    // skill id and `callID` as the tool_use_id (kept for symmetry — error
+    // pairing isn't reachable through this lightweight path anyway).
+    let mut q2 = conn.prepare(
+        "SELECT json_extract(p.data, '$.callID'), \
+                json_extract(p.data, '$.state.input.name') \
+         FROM part p \
+         JOIN message m ON p.message_id = m.id \
+         WHERE m.session_id = ?1 \
+           AND json_extract(p.data, '$.type') = 'tool' \
+           AND lower(IFNULL(json_extract(p.data, '$.tool'), '')) = 'skill'",
+    )?;
+    let mut rows2 = q2.query([session_id])?;
+    while let Some(r) = rows2.next()? {
+        let call_id: Option<String> = r.get(0).ok();
+        let skill_name: Option<String> = r.get(1).ok();
+        let (Some(call_id), Some(skill_name)) = (call_id, skill_name) else {
+            continue;
+        };
+        if skill_name.is_empty() {
+            continue;
+        }
+        det.observe_assistant_skill_tool(None, None, &call_id, &skill_name);
+    }
+
+    Ok(det.used_skill_ids())
 }

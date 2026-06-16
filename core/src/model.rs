@@ -22,6 +22,11 @@ pub struct SessionSummary {
     /// (largest input_tokens + cache_* observed across assistant turns).
     pub peak_context_tokens: u64,
     pub source_path: String,
+    /// Skill ids detected on this session (any source — assistant tool_use or
+    /// user-text fingerprint match). Sorted, deduped. Populated during the
+    /// summary scan; empty/absent on older payloads.
+    #[serde(default)]
+    pub used_skills: Vec<String>,
 }
 
 /// One node in a session timeline.
