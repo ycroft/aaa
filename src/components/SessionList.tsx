@@ -12,6 +12,9 @@ interface Props {
    *  show a "scanning…" spinner instead of the "no matches" empty text on the
    *  first open of a large source — list_sessions can take 1-2s on big logs. */
   busy: boolean;
+  /** Right-click → "Judge this session". When omitted the row falls back
+   *  to the browser's default context menu so we don't trap clicks. */
+  onJudgeSession?: (s: SessionSummary) => void;
 }
 
 // Convert filter.timePreset (+ custom range) to an absolute [from, to] window in ms.
@@ -41,7 +44,7 @@ function resolveTimeWindow(filter: SessionFilter): { from: number | null; to: nu
   }
 }
 
-export function SessionList({ sessions, filter, activeId, onPick, busy }: Props) {
+export function SessionList({ sessions, filter, activeId, onPick, busy, onJudgeSession }: Props) {
   const t = useT();
   const filtered = useMemo(() => {
     const f = filter.search.trim().toLowerCase();
@@ -94,6 +97,21 @@ export function SessionList({ sessions, filter, activeId, onPick, busy }: Props)
             key={s.source_path}
             className={`session-row${activeId === s.source_path ? " active" : ""}`}
             onClick={() => onPick(s)}
+            onContextMenu={
+              onJudgeSession
+                ? (e) => {
+                    e.preventDefault();
+                    // V1 placeholder until we wire a proper <ContextMenu>:
+                    // a synchronous confirm so the user can opt in/out per
+                    // row. The right-click → "Judge" hook is the contract,
+                    // the prompt UI can be upgraded later without changing
+                    // the prop surface.
+                    if (window.confirm(t("menu.judger") + "?")) {
+                      onJudgeSession(s);
+                    }
+                  }
+                : undefined
+            }
             data-hint={t("session_list.open_hint", { id: s.session_id })}
           >
             <div className="title">{s.title || s.session_id}</div>
