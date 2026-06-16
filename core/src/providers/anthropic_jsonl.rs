@@ -38,14 +38,11 @@ use crate::stats::SkillUsage;
 /// Walk `<root>/<project>/*.jsonl` and produce a summary per session,
 /// newest first. Tags each summary with the given `provider_id`.
 ///
-/// `skill_roots_fn` is called per-session with the session's `cwd` to build a
-/// fingerprint registry, so `summary.used_skills` reflects both user-level
-/// (`~/.claude/skills`) and project-level (`<cwd>/.claude/skills`) skills.
-pub fn list_sessions(
-    root: &Path,
-    provider_id: &str,
-    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
-) -> Result<Vec<SessionSummary>> {
+/// `summary.used_skills` is intentionally left empty — populating it would
+/// require walking each file end-to-end, which defeats the cheap-pass goal.
+/// Callers that want the per-session skill list call `extract_used_skills`
+/// (or the provider trait's `scan_session_skills`) asynchronously.
+pub fn list_sessions(root: &Path, provider_id: &str) -> Result<Vec<SessionSummary>> {
     if !root.exists() {
         debug!("list_sessions: root {:?} does not exist", root);
         return Ok(Vec::new());
@@ -65,7 +62,7 @@ pub fn list_sessions(
             if p.extension().and_then(|s| s.to_str()) != Some("jsonl") {
                 continue;
             }
-            match scan_summary(&p, provider_id, skill_roots_fn) {
+            match scan_summary(&p, provider_id) {
                 Ok(summary) => out.push(summary),
                 Err(e) => warn!("scan_summary skipped {:?}: {}", p, e),
             }
@@ -707,12 +704,10 @@ fn parse_block(b: &Value) -> Option<MessagePart> {
     }
 }
 
-fn scan_summary(
-    p: &Path,
-    provider_id: &str,
-    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
-) -> Result<SessionSummary> {
+fn scan_summary(p: &Path, provider_id: &str) -> Result<SessionSummary> {
     // Cheap pass: only inspect a few fields so listing many sessions stays fast.
+    // Skill detection lives in `extract_used_skills`, called separately by the
+    // async post-list scan so this hot path doesn't have to walk every record.
     let f = File::open(p).with_context(|| format!("open {:?}", p))?;
     let reader = BufReader::new(f);
 
@@ -737,11 +732,6 @@ fn scan_summary(
     };
     let mut peak: u64 = 0;
     let mut first_user_text: Option<String> = None;
-    // Lazily built once cwd is known so project-level skill roots resolve
-    // correctly. The registry lives here for the whole scan; the detector is
-    // re-borrowed each line.
-    let mut reg: Option<SkillRegistry> = None;
-    let mut det_obs: Vec<SkillObs> = Vec::new();
 
     for line in reader.lines().flatten() {
         if line.trim().is_empty() {
@@ -775,22 +765,10 @@ fn scan_summary(
             }
             Some("user") => {
                 summary.message_count += 1;
-                // user.message.content can be either a string (top-level
-                // chat) or an array of content blocks (slash-command
-                // expansions, tool-result wrappers, …). Pull the first text
-                // body either way.
                 if let Some(text) = extract_user_text(&v) {
                     if first_user_text.is_none() {
-                        first_user_text = Some(text.clone());
+                        first_user_text = Some(text);
                     }
-                    if reg.is_none() {
-                        let cwd = summary.cwd.as_deref().map(Path::new);
-                        reg = Some(SkillRegistry::build(&skill_roots_fn(cwd)));
-                    }
-                    det_obs.push(SkillObs::UserText {
-                        text,
-                        timestamp: line_ts.clone(),
-                    });
                 }
             }
             Some("assistant") => {
@@ -804,6 +782,68 @@ fn scan_summary(
                         peak = ctx;
                     }
                 }
+            }
+            _ => {}
+        }
+    }
+    summary.peak_context_tokens = peak;
+
+    if summary.title.is_none() {
+        if let Some(t) = first_user_text {
+            let mut s: String = t.chars().take(80).collect();
+            if t.chars().count() > 80 {
+                s.push('…');
+            }
+            summary.title = Some(s);
+        }
+    }
+    if summary.title.is_none() {
+        return Err(anyhow!("session has no recognisable content"));
+    }
+    Ok(summary)
+}
+
+/// Walk a single session's JSONL file and return the skill IDs detected.
+/// Used by the async post-list scan that populates `summary.used_skills`
+/// off the `list_sessions` critical path. Mirrors the two-pass structure
+/// (collect observations, then replay through `SkillDetector`) the original
+/// inline code in `scan_summary` used.
+pub fn extract_used_skills(
+    path: &Path,
+    skill_roots_fn: &dyn Fn(Option<&Path>) -> Vec<PathBuf>,
+) -> Result<Vec<String>> {
+    let f = File::open(path).with_context(|| format!("open {:?}", path))?;
+    let reader = BufReader::new(f);
+    let mut cwd: Option<String> = None;
+    let mut det_obs: Vec<SkillObs> = Vec::new();
+
+    for line in reader.lines().flatten() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let v: Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(c) = v.get("cwd").and_then(Value::as_str) {
+            if cwd.is_none() {
+                cwd = Some(c.to_string());
+            }
+        }
+        let line_ts = v
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        match v.get("type").and_then(Value::as_str) {
+            Some("user") => {
+                if let Some(text) = extract_user_text(&v) {
+                    det_obs.push(SkillObs::UserText {
+                        text,
+                        timestamp: line_ts,
+                    });
+                }
+            }
+            Some("assistant") => {
                 if let Some(blocks) = v
                     .get("message")
                     .and_then(|m| m.get("content"))
@@ -822,8 +862,6 @@ fn scan_summary(
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .to_string();
-                        // Both Claude Code (`{skill: ...}`) and any future
-                        // shape with `{name: ...}` get unified here.
                         let input = b.get("input").cloned().unwrap_or(Value::Null);
                         let input_str = serde_json::to_string(&input).unwrap_or_default();
                         if let Some(sid) = extract_skill_id_from_input(&input_str) {
@@ -839,14 +877,10 @@ fn scan_summary(
             _ => {}
         }
     }
-    summary.peak_context_tokens = peak;
 
-    // Replay accumulated observations into a SkillDetector to populate
-    // used_skills. We can't drive the detector inline because the registry
-    // is built lazily once cwd is known, which may be after the first user
-    // line — replaying keeps the order tidy.
-    let reg_built = reg.unwrap_or_default();
-    let mut det = SkillDetector::new(&reg_built);
+    let cwd_path = cwd.as_deref().map(Path::new);
+    let reg = SkillRegistry::build(&skill_roots_fn(cwd_path));
+    let mut det = SkillDetector::new(&reg);
     for obs in det_obs {
         match obs {
             SkillObs::UserText { text, timestamp } => {
@@ -866,25 +900,12 @@ fn scan_summary(
             }
         }
     }
-    summary.used_skills = det.used_skill_ids();
-
-    if summary.title.is_none() {
-        if let Some(t) = first_user_text {
-            let mut s: String = t.chars().take(80).collect();
-            if t.chars().count() > 80 {
-                s.push('…');
-            }
-            summary.title = Some(s);
-        }
-    }
-    if summary.title.is_none() {
-        return Err(anyhow!("session has no recognisable content"));
-    }
-    Ok(summary)
+    Ok(det.used_skill_ids())
 }
 
-/// Internal observation shape used inside `scan_summary` to defer detector
-/// invocation until the registry has been built.
+/// Observation shape collected by `extract_used_skills` so the registry can
+/// be built lazily once cwd is known (which may be after the first user
+/// line) before observations get replayed into the detector.
 enum SkillObs {
     UserText {
         text: String,

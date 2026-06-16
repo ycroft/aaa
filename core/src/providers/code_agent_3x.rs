@@ -29,7 +29,7 @@ impl SessionProvider for CodeAgent3xProvider {
         vec!["{home}/.cac/projects"]
     }
     fn list_sessions(&self, root: &PathBuf) -> Result<Vec<SessionSummary>> {
-        anthropic_jsonl::list_sessions(root, ID, &|cwd| self.skill_roots(cwd))
+        anthropic_jsonl::list_sessions(root, ID)
     }
     fn load_session(&self, source_path: &PathBuf) -> Result<SessionDetail> {
         anthropic_jsonl::load_session(source_path, ID, &|cwd| self.skill_roots(cwd))
@@ -38,6 +38,9 @@ impl SessionProvider for CodeAgent3xProvider {
         let cwd = detail.summary.cwd.as_deref().map(Path::new);
         let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd));
         anthropic_jsonl::collect_skill_usage(detail, &reg)
+    }
+    fn scan_session_skills(&self, source_path: &Path) -> Result<Vec<String>> {
+        anthropic_jsonl::extract_used_skills(source_path, &|cwd| self.skill_roots(cwd))
     }
     fn skill_roots(&self, cwd: Option<&Path>) -> Vec<PathBuf> {
         let mut out = Vec::new();

@@ -36,6 +36,13 @@ fn warn_on_err<T>(cmd: &'static str, res: Result<T, String>) -> Result<T, String
 #[derive(Default)]
 pub struct RemoteTasks(pub Mutex<HashMap<String, Arc<AtomicBool>>>);
 
+/// Per-scan cancel flags keyed by `scan_id`. The background skill-scan worker
+/// polls the flag between sessions and exits cleanly when the panel closes
+/// or the user picks a different root. Wrapped in `Arc` so the worker can
+/// hold its own clone without borrowing the Tauri State.
+#[derive(Default)]
+pub struct SkillScanTasks(pub Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>);
+
 #[derive(Debug, Clone, Serialize)]
 struct ProgressEvent<'a> {
     task_id: &'a str,
@@ -372,6 +379,118 @@ pub async fn remote_open(
 pub fn remote_cancel(tasks: State<'_, RemoteTasks>, task_id: String) -> Result<(), String> {
     info!("cmd remote_cancel task={}", task_id);
     if let Some(flag) = tasks.0.lock().unwrap().get(&task_id) {
+        flag.store(true, Ordering::SeqCst);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SkillScanProgress<'a> {
+    scan_id: &'a str,
+    source_path: &'a str,
+    used_skills: &'a [String],
+    /// 1-based index of the session that just finished.
+    k: usize,
+    /// Total session count for this scan.
+    n: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SkillScanDone<'a> {
+    scan_id: &'a str,
+    total: usize,
+}
+
+/// Kick off a background pass that fills `summary.used_skills` for each
+/// `source_path` after `list_sessions` has returned. The frontend listens for
+/// `skill-scan-progress` events (one per session) plus a final
+/// `skill-scan-done`. Cancellable via `cancel_skill_scan(scan_id)`.
+#[tauri::command]
+pub fn start_skill_scan(
+    app: AppHandle,
+    tasks: State<'_, SkillScanTasks>,
+    provider_id: String,
+    scan_id: String,
+    source_paths: Vec<String>,
+) -> Result<(), String> {
+    debug!(
+        "cmd start_skill_scan provider={} scan_id={} n={}",
+        provider_id,
+        scan_id,
+        source_paths.len()
+    );
+    // Verify the provider exists before spawning so the frontend gets an
+    // immediate error for typos rather than silent no-progress.
+    if providers::find(&provider_id).is_none() {
+        return Err(format!("unknown provider: {}", provider_id));
+    }
+
+    let cancelled = Arc::new(AtomicBool::new(false));
+    tasks
+        .0
+        .lock()
+        .unwrap()
+        .insert(scan_id.clone(), cancelled.clone());
+
+    let tasks_arc = tasks.0.clone();
+    let app_for_worker = app.clone();
+    let scan_id_for_worker = scan_id;
+    let provider_id_for_worker = provider_id;
+    std::thread::spawn(move || {
+        // Re-resolve the provider inside the worker so we don't ship a
+        // potentially `!Send` boxed trait object across thread boundaries.
+        let provider = match providers::find(&provider_id_for_worker) {
+            Some(p) => p,
+            None => return,
+        };
+        let n = source_paths.len();
+        for (i, path) in source_paths.iter().enumerate() {
+            if cancelled.load(Ordering::SeqCst) {
+                debug!(
+                    "skill-scan {} cancelled at {}/{}",
+                    scan_id_for_worker, i, n
+                );
+                break;
+            }
+            let used = provider
+                .scan_session_skills(&PathBuf::from(path))
+                .unwrap_or_else(|e| {
+                    warn!("scan_session_skills failed for {}: {}", path, e);
+                    Vec::new()
+                });
+            let _ = app_for_worker.emit(
+                "skill-scan-progress",
+                SkillScanProgress {
+                    scan_id: &scan_id_for_worker,
+                    source_path: path,
+                    used_skills: &used,
+                    k: i + 1,
+                    n,
+                },
+            );
+        }
+        let _ = app_for_worker.emit(
+            "skill-scan-done",
+            SkillScanDone {
+                scan_id: &scan_id_for_worker,
+                total: n,
+            },
+        );
+        tasks_arc.lock().unwrap().remove(&scan_id_for_worker);
+    });
+
+    Ok(())
+}
+
+/// Flip the cancel flag for an in-flight skill scan. Idempotent — unknown
+/// scan ids return Ok so the UI can fire-and-forget on panel close.
+#[tauri::command]
+pub fn cancel_skill_scan(
+    tasks: State<'_, SkillScanTasks>,
+    scan_id: String,
+) -> Result<(), String> {
+    info!("cmd cancel_skill_scan scan={}", scan_id);
+    if let Some(flag) = tasks.0.lock().unwrap().get(&scan_id) {
         flag.store(true, Ordering::SeqCst);
     }
     Ok(())

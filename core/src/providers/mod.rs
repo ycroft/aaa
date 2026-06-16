@@ -75,6 +75,14 @@ pub trait SessionProvider: Send + Sync {
     fn list_sessions(&self, root: &PathBuf) -> anyhow::Result<Vec<SessionSummary>>;
 
     fn load_session(&self, source_path: &PathBuf) -> anyhow::Result<SessionDetail>;
+
+    /// Extract skill IDs used in a single session, identified by source_path.
+    /// Default returns empty so providers without skill detection cost zero.
+    /// Called by the Tauri layer's async background skill-scan task; must be
+    /// safe to invoke off the main thread.
+    fn scan_session_skills(&self, _source_path: &Path) -> anyhow::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
 }
 
 pub fn info_of(p: &dyn SessionProvider, override_root: Option<&PathBuf>) -> ProviderInfo {

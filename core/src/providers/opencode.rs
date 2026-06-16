@@ -114,23 +114,10 @@ impl SessionProvider for OpencodeProvider {
                                 db_path,
                                 sessions.len()
                             );
-                            // Augment each summary with `used_skills`.
-                            // Per-session registry build is cheap; the
-                            // unified detector handles both user-text
-                            // fingerprints and assistant-side `tool=skill`
-                            // calls so list/timeline/stats can never
-                            // disagree.
-                            for s in sessions.iter_mut() {
-                                let cwd = s.cwd.as_deref().map(Path::new);
-                                let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd));
-                                match collect_used_skills(&conn, &s.session_id, &reg) {
-                                    Ok(ids) => s.used_skills = ids,
-                                    Err(e) => warn!(
-                                        "opencode collect_used_skills sid={} failed: {}",
-                                        s.session_id, e
-                                    ),
-                                }
-                            }
+                            // used_skills is filled asynchronously by the
+                            // Tauri host's `start_skill_scan` task — kept off
+                            // the listing critical path so opening a data
+                            // source isn't blocked on per-session SQL.
                             out.append(&mut sessions);
                         }
                     }
@@ -181,6 +168,24 @@ impl SessionProvider for OpencodeProvider {
             crate::skill_detect::walk_session_nodes(&sa.nodes, &mut det);
         }
         det.into_usage_rows()
+    }
+
+    fn scan_session_skills(&self, source_path: &Path) -> Result<Vec<String>> {
+        let (db_path, session_id) = parse_source_path(source_path)?;
+        let conn = open_ro(&db_path)?;
+        // We only need cwd to build the project-level skill registry; reading
+        // the single matching session row (vs. scan_summaries on the whole
+        // db) keeps this off the listing path's cost curve.
+        let cwd: Option<String> = conn
+            .query_row(
+                "SELECT directory FROM session WHERE id = ?1",
+                rusqlite::params![&session_id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .unwrap_or(None);
+        let cwd_path = cwd.as_deref().map(Path::new);
+        let reg = crate::skills::SkillRegistry::build(&self.skill_roots(cwd_path));
+        collect_used_skills(&conn, &session_id, &reg)
     }
 }
 

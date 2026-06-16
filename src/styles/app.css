@@ -345,11 +345,16 @@ button { font-family: inherit; }
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
   color: var(--text-1);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: aaa-skill-fade-in 240ms ease-out;
 }
 .session-row .meta .pill.skill-pill.more {
   background: var(--bg-2);
   border-color: var(--border-1);
   color: var(--text-3);
+}
+@keyframes aaa-skill-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: none; }
 }
 
 /* ---- Main pane ---- */

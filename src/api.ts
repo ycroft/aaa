@@ -44,6 +44,10 @@ export const api = {
     invoke<RemoteOpenResult>("remote_open", { remoteId, providerId, taskId }),
   remoteCancel: (taskId: string) =>
     invoke<void>("remote_cancel", { taskId }),
+  startSkillScan: (providerId: string, scanId: string, sourcePaths: string[]) =>
+    invoke<void>("start_skill_scan", { providerId, scanId, sourcePaths }),
+  cancelSkillScan: (scanId: string) =>
+    invoke<void>("cancel_skill_scan", { scanId }),
   exportSessions: (
     providerId: string,
     sourcePaths: string[],

@@ -77,6 +77,7 @@ export const zh = {
     ready: "就绪。",
     scanning: "正在扫描 {root}…",
     loaded_sessions: "已加载 {count} 个会话。",
+    scanning_skills: "正在后台扫描技能… {k}/{n}",
     scan_failed: "扫描目录失败。",
     loaded_session: "已加载：{title}",
     load_session_failed: "加载会话失败。",
