@@ -1368,31 +1368,12 @@ git add src-tauri/src/judger_commands.rs src-tauri/src/lib.rs
 git commit -m "feat(judger): add Tauri commands (start/list/get/delete/open_workdir)"
 ```
 
-### Task 9: Drop the export_sessions Tauri command
+### Task 9: ~~Drop the export_sessions Tauri command~~ — REMOVED
 
-**Files:**
-- Modify: `src-tauri/src/commands.rs:520-556`
-- Modify: `src-tauri/src/lib.rs` (handler list)
+**Status:** Cancelled after review.
 
-- [ ] **Step 1: Remove the function**
+`SessionPanel.tsx::handleExport` (the toolbar 「导出」 button — independent of AI analysis) still consumes `api.exportSessions → cmd export_sessions`. The judger uses `core::export::build_bundle` directly via `runner::prepare_judgment` and does NOT route through the Tauri `export_sessions` command. So `export_sessions` keeps serving the regular export flow; both consumers share the same `core::export::build_bundle` underneath. No deletion needed.
 
-In `src-tauri/src/commands.rs`, delete the entire `pub fn export_sessions(...)` block at lines 520-556 (and any helpers used only by it).
-
-- [ ] **Step 2: Remove from invoke_handler**
-
-In the handler list, delete the `commands::export_sessions,` line.
-
-- [ ] **Step 3: Build**
-
-Run: `cargo build -p aaa --release 2>&1 | tail -20`
-Expected: clean build.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add src-tauri/src/commands.rs src-tauri/src/lib.rs
-git commit -m "feat(judger): remove export_sessions Tauri command (replaced by judger_start)"
-```
 
 ### Task 10: Tauri smoke test
 
@@ -2001,7 +1982,26 @@ git commit -m "feat(judger): add SessionPicker (multi-select)"
 ### Task 15: StartEvaluationForm component
 
 **Files:**
+- Create: `src/components/JudgerPanel/dims.ts`
 - Create: `src/components/JudgerPanel/StartEvaluationForm.tsx`
+
+- [ ] **Step 0: Define the shared dimensions constant**
+
+`src/components/JudgerPanel/dims.ts`:
+```ts
+import type { Dimension } from "../../types";
+
+/** Canonical order of judge dimensions. Used as the picker's full set
+ *  AND as the rendering order in RubricView — two semantically distinct
+ *  uses that happen to share the same ordered list. Single source of
+ *  truth so adding/removing a dimension only touches one file. */
+export const ALL_DIMENSIONS: Dimension[] = [
+  "context",
+  "tools",
+  "alignment",
+  "safety",
+];
+```
 
 - [ ] **Step 1: Build the form**
 
@@ -2012,16 +2012,17 @@ import { useI18n } from "../../i18n/useI18n";
 import { judgerStart } from "../../api";
 import type { Dimension, SessionRef, StartJudgmentArgs } from "../../types";
 import { SessionPicker, type PickerSource } from "./SessionPicker";
+import { ALL_DIMENSIONS } from "./dims";
 
 interface Props {
   sources: PickerSource[];
   defaultAgentCmd: string;
   preselected?: SessionRef[];
-  onCommitted: (runIds: string[]) => void;
+  /** Receives the list of started run-ids AND the agent_cmd the user submitted,
+   *  so the parent can persist `last_cmd` without a side-channel. */
+  onCommitted: (runIds: string[], agentCmd: string) => void;
   onCancel: () => void;
 }
-
-const ALL_DIMENSIONS: Dimension[] = ["context", "tools", "alignment", "safety"];
 
 export function StartEvaluationForm({
   sources,
@@ -2081,7 +2082,7 @@ export function StartEvaluationForm({
         const id = await judgerStart(args);
         runIds.push(id);
       }
-      onCommitted(runIds);
+      onCommitted(runIds, agentCmd);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -2255,14 +2256,13 @@ git commit -m "feat(judger): add JudgmentList component"
 `src/components/JudgerPanel/RubricView.tsx`:
 ```tsx
 import { useI18n } from "../../i18n/useI18n";
-import type { Rubric, Severity, Dimension } from "../../types";
+import type { Rubric, Severity } from "../../types";
+import { ALL_DIMENSIONS } from "./dims";
 
 interface Props {
   rubric: Rubric;
   onJumpToNode?: (nodeId: string) => void;
 }
-
-const DIM_ORDER: Dimension[] = ["context", "tools", "alignment", "safety"];
 
 export function RubricView({ rubric, onJumpToNode }: Props) {
   const { t } = useI18n();
@@ -2275,7 +2275,7 @@ export function RubricView({ rubric, onJumpToNode }: Props) {
       </div>
       <p className="summary">{rubric.summary}</p>
 
-      {DIM_ORDER.map((dim) => {
+      {ALL_DIMENSIONS.map((dim) => {
         const d = byDim.get(dim);
         if (!d) return null;
         return (
@@ -2528,13 +2528,13 @@ export function JudgerPanel({
             sources={pickerSources}
             defaultAgentCmd={settings.judger.last_cmd ?? ""}
             preselected={preselected ?? undefined}
-            onCommitted={(ids) => {
-              // remember last_cmd
-              const last = lastSubmittedCmd();
-              if (last !== null) {
+            onCommitted={(ids, agentCmd) => {
+              // Persist last_cmd straight from the form's submission, no
+              // module-level state needed — onCommitted now carries it.
+              if (agentCmd.trim()) {
                 onSaveSettings({
                   ...settings,
-                  judger: { ...settings.judger, last_cmd: last },
+                  judger: { ...settings.judger, last_cmd: agentCmd },
                 });
               }
               onFormCommitted(ids);
@@ -2554,17 +2554,10 @@ export function JudgerPanel({
   );
 }
 
-// Stash for the form's last-submitted agent_cmd so onCommitted can persist it.
-// Implementation note: StartEvaluationForm captures agent_cmd in local state;
-// to surface it back to the panel, refactor StartEvaluationForm.onCommitted
-// signature to (runIds, agentCmd). Below is the cleaner approach — apply if
-// preferred, otherwise keep this lastSubmittedCmd helper as a closure.
-let _lastCmd: string | null = null;
-export function setLastSubmittedCmd(cmd: string) { _lastCmd = cmd; }
-function lastSubmittedCmd(): string | null { const c = _lastCmd; _lastCmd = null; return c; }
 ```
 
-> **Cleanup hint:** The `_lastCmd` stash is intentionally minimal. When the form is wired up, change `StartEvaluationForm`'s `onCommitted: (runIds: string[]) => void` to `onCommitted: (runIds: string[], agentCmd: string) => void`, drop the global stash, and pass `agentCmd` straight to the panel. Both styles work; pick one and stick with it.
+> **Persistence note:** The `agent_cmd` flows back through `onCommitted(ids, agentCmd)` so the parent panel persists `settings.judger.last_cmd` without any module-level state. Single source of truth for the value: the form's local `useState`.
+
 
 - [ ] **Step 2: Commit**
 
@@ -2588,6 +2581,21 @@ In `src/App.tsx`:
 - Delete the `<AiAnalysisDialog ... />` render.
 - Delete the `if (aiAnalysisOpen)` Esc handler branch.
 - Delete the `t("menu.ai_analysis")` menu item registration.
+- **Delete these AI gating helpers (around line 447–460):**
+  ```ts
+  const aiReady = settings.ai.mode === "agent" && !!settings.ai.selected_agent;
+  const aiNotReadyMsg = !aiReady ? ... : null;
+  const handleAiAnalysis = useCallback(() => { ... }, [aiNotReadyMsg]);
+  ```
+- **Delete the `ai: {...}` field from the `defaultSettings` literal (around line 45):**
+  ```ts
+  ai: { mode: "none", selected_agent: null, agents: [], prompt_templates: [] },
+  ```
+  Replace with:
+  ```ts
+  judger: { last_cmd: null },
+  ```
+- Remove any `aiAnalysisOpen` reference in the deps array of the keyboard-shortcut effect.
 
 - [ ] **Step 2: Add Judger panel state**
 
@@ -2598,7 +2606,7 @@ import {
   JUDGER_PANEL_TITLE_KEY,
   type PanelDescriptor,
 } from "./panels";
-import { JudgerPanel, setLastSubmittedCmd } from "./components/JudgerPanel";
+import { JudgerPanel } from "./components/JudgerPanel";
 import type { SessionRef, SessionSummary } from "./types";
 
 // New state
@@ -2996,7 +3004,6 @@ This plan delivers Phase 1-7 in 25 tasks. Key invariants checked against the spe
   - All Unknown variants serialize as `"unknown"`; serde `#[serde(other)]` only matches incoming foreign values, but explicit serialization writes "unknown" — TS literal union must include it (it does).
 
 - **Known acceptable hacks**:
-  - `JudgerPanel/index.tsx` uses a module-level `_lastCmd` stash for persisting the form's submitted agent_cmd back to settings; documented inline with the cleaner alternative (extend `onCommitted` signature).
   - `onJumpToNode` in V1 is documented as "switch panel; rely on user scroll" — reaching exact node selection is deferred.
   - `SessionList` right-click uses `confirm()` placeholder if no `<ContextMenu>` lib in the project; documented to swap for richer pattern when available.
 
