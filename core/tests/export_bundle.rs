@@ -39,3 +39,33 @@ fn manifest_contains_version_provider_and_scope() {
     assert!(m["export_ts"].as_str().is_some());
     assert!(m["known_skills"].is_array());
 }
+
+#[test]
+fn index_jsonl_has_one_row_per_session_with_files_paths() {
+    // Find a real claude-code session to keep the test honest.
+    let provider = aaa_core::providers::find("claude-code").unwrap();
+    let Some(root) = provider.default_root() else { return; };
+    if !root.exists() { return; }
+    let sessions = match provider.list_sessions(&root) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return,
+    };
+    let one = sessions[0].source_path.clone();
+
+    let tmp = tempfile::tempdir().unwrap();
+    let inputs = BundleInputs {
+        provider_id: "claude-code".into(),
+        source_paths: vec![PathBuf::from(&one)],
+        root: Some(root),
+        scope: ExportScope::Single,
+    };
+    let out = build_bundle(&inputs, tmp.path()).unwrap();
+    let index = std::fs::read_to_string(out.bundle_dir.join("index.jsonl")).unwrap();
+    let rows: Vec<&str> = index.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(rows.len(), 1);
+    let row: serde_json::Value = serde_json::from_str(rows[0]).unwrap();
+    assert!(row["session_id"].as_str().unwrap().len() > 0);
+    assert!(row["files"]["events"].as_str().unwrap().starts_with("sessions/"));
+    assert!(row["files"]["transcript"].as_str().unwrap().ends_with("transcript.md"));
+    assert!(row["files"]["raw"].as_str().unwrap().ends_with("raw.json"));
+}
