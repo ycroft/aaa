@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { AppInfo } from "../types";
 import { useT } from "../i18n";
+import iconUrl from "../assets/icon.png";
 
 interface Props {
   open: boolean;
@@ -37,10 +38,19 @@ export function AboutDialog({ open, onClose }: Props) {
           )}
           {info && (
             <>
-              <div style={{ marginBottom: 12, flex: "0 0 auto" }}>
-                <div style={{ fontSize: 16, fontWeight: 600 }}>{info.name}</div>
-                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
-                  {t("about.version_author", { version: info.version, author: info.author })}
+              <div style={{ marginBottom: 12, flex: "0 0 auto", display: "flex", gap: 12, alignItems: "center" }}>
+                <img
+                  src={iconUrl}
+                  alt=""
+                  width={64}
+                  height={64}
+                  style={{ borderRadius: 8, flex: "0 0 auto" }}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>{info.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 2 }}>
+                    {t("about.version_author", { version: info.version, author: info.author })}
+                  </div>
                 </div>
               </div>
 
