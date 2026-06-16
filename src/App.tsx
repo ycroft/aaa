@@ -7,13 +7,14 @@ import type {
   AppSettings,
   ProviderInfo,
   RemoteHostInfo,
+  SessionRef,
+  SessionSummary,
 } from "./types";
 
 import { Menubar, type MenuDef } from "./components/Menubar";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { FeedbackDialog } from "./components/FeedbackDialog";
-import { AiAnalysisDialog } from "./components/AiAnalysisDialog";
 import { AboutDialog } from "./components/AboutDialog";
 import { ProviderSplash } from "./components/ProviderSplash";
 import { RemoteProgressDialog } from "./components/RemoteProgressDialog";
@@ -27,10 +28,16 @@ import {
   type SessionPanelSnapshot,
 } from "./components/SessionPanel";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
+import { JudgerPanel } from "./components/JudgerPanel";
 
 import { useStatusHint } from "./hooks/useStatusHint";
 import { I18nProvider, useI18n, useT, type LanguagePref } from "./i18n";
-import { panelIdentity, type PanelDescriptor } from "./panels";
+import {
+  JUDGER_PANEL_IDENTITY,
+  JUDGER_PANEL_TITLE_KEY,
+  panelIdentity,
+  type PanelDescriptor,
+} from "./panels";
 
 interface PendingRemoteOpen {
   taskId: string;
@@ -42,7 +49,7 @@ interface PendingRemoteOpen {
 const DEFAULT_SETTINGS: AppSettings = {
   provider_roots: {},
   remotes: [],
-  ai: { mode: "none", selected_agent: null, agents: [], prompt_templates: [] },
+  judger: { last_cmd: null },
   ui: { theme: "light", preview_chars: 220, auto_expand_threshold_tokens: 0, language: "auto" },
   hub: { base_url: "", device_id: "" },
 };
@@ -93,9 +100,12 @@ function AppInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [hubConnected, setHubConnected] = useState(false);
-  const [aiAnalysisOpen, setAiAnalysisOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
+  const [judgerPreselected, setJudgerPreselected] = useState<SessionRef[] | null>(null);
+  const [sessionCatalog, setSessionCatalog] = useState<
+    Map<string, { providerId: string; root: string; sessions: SessionSummary[] }>
+  >(new Map());
   const hint = useStatusHint();
 
   // ---- Initial load: providers + settings + remotes, then show splash. ----
@@ -207,6 +217,7 @@ function AppInner() {
     (active: ActiveBackend) => {
       addOrFocusPanel({
         identity: panelIdentity(active),
+        kind: "session",
         title: providerLabel(active.provider, t),
         subtitle: active.remote ? `↗ ${active.remote.label}` : null,
         icon: active.remote ? "↗" : "▣",
@@ -216,12 +227,36 @@ function AppInner() {
     [addOrFocusPanel, t],
   );
 
+  const openJudgerPanel = useCallback((preselected?: SessionRef[]) => {
+    setPanels((prev) => {
+      if (prev.some((p) => p.identity === JUDGER_PANEL_IDENTITY)) {
+        // Already open — just focus it.
+        return prev;
+      }
+      const desc: PanelDescriptor = {
+        id: JUDGER_PANEL_IDENTITY,
+        identity: JUDGER_PANEL_IDENTITY,
+        kind: "judger",
+        title: t(JUDGER_PANEL_TITLE_KEY),
+        subtitle: null,
+        icon: "✦",
+        backend: null,
+      };
+      return [...prev, desc];
+    });
+    setActivePanelId(JUDGER_PANEL_IDENTITY);
+    if (preselected && preselected.length > 0) {
+      setJudgerPreselected(preselected);
+    }
+  }, [t]);
+
   // When settings change a local provider's root override, propagate it to
   // any open local panels bound to that provider so they re-scan.
   useEffect(() => {
     setPanels((prev) => {
       let mutated = false;
       const next = prev.map((p) => {
+        if (!p.backend) return p;
         if (p.backend.remote) return p;
         const overridden =
           settings.provider_roots[p.backend.provider.id] ||
@@ -383,7 +418,6 @@ function AppInner() {
       const target = e.target as HTMLElement | null;
       const inEditable = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
       if (e.key === "Escape") {
-        if (aiAnalysisOpen) { setAiAnalysisOpen(false); e.preventDefault(); return; }
         if (settingsOpen) { setSettingsOpen(false); e.preventDefault(); return; }
         if (splashOpen && panels.length > 0) { setSplashOpen(false); e.preventDefault(); return; }
       }
@@ -436,7 +470,6 @@ function AppInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [
     settingsOpen,
-    aiAnalysisOpen,
     splashOpen,
     panels.length,
     pendingRemote,
@@ -444,21 +477,6 @@ function AppInner() {
   ]);
 
   // ---- Menus. ----
-  const aiReady = settings.ai.mode === "agent" && !!settings.ai.selected_agent;
-  const aiNotReadyMsg = !aiReady
-    ? settings.ai.mode === "api"
-      ? t("ai_dialog.not_ready_api")
-      : t("ai_dialog.not_ready_no_agent")
-    : null;
-
-  const handleAiAnalysis = useCallback(() => {
-    if (aiNotReadyMsg) {
-      window.alert(aiNotReadyMsg);
-      return;
-    }
-    setAiAnalysisOpen(true);
-  }, [aiNotReadyMsg]);
-
   const hasActivePanel = activePanelId !== null;
   const hasLoadedSession = !!activeSnapshot?.activeSession;
   const exporting = activeSnapshot?.canExport === false && hasLoadedSession;
@@ -490,9 +508,9 @@ function AppInner() {
             disabled: !hasLoadedSession || exporting,
           },
           {
-            label: t("menu.ai_analysis"),
-            hint: t("menu.ai_analysis_hint"),
-            onClick: handleAiAnalysis,
+            label: t("menu.judger"),
+            hint: t("menu.judger_hint"),
+            onClick: () => openJudgerPanel(),
           },
           { separator: true, label: "" },
           {
@@ -567,7 +585,7 @@ function AppInner() {
         ],
       },
     ],
-    [t, settings, hasActivePanel, hasLoadedSession, exporting, handleAiAnalysis, callActiveHandle, activeSnapshot?.expandAll],
+    [t, settings, hasActivePanel, hasLoadedSession, exporting, openJudgerPanel, callActiveHandle, activeSnapshot?.expandAll],
   );
 
   // ---- Status bar source ---------------------------------------------------
@@ -596,6 +614,34 @@ function AppInner() {
         )}
         {panels.map((p) => {
           const visible = p.id === activePanelId;
+          if (p.kind === "judger") {
+            return (
+              <div
+                key={p.id}
+                className="panel-host judger-panel-host"
+                style={{ display: visible ? "flex" : "none", flex: 1, minWidth: 0, minHeight: 0 }}
+              >
+                <JudgerPanel
+                  settings={settings}
+                  onSaveSettings={(next) => { void onSaveSettings(next); }}
+                  pickerSources={Array.from(sessionCatalog.values())}
+                  preselected={judgerPreselected}
+                  onConsumePreselected={() => setJudgerPreselected(null)}
+                  onJumpToNode={(_sourcePath, _nodeId) => {
+                    // V1: deep-linking back to a session node from a rubric
+                    // chip is deferred. The intent is to find the matching
+                    // SessionPanel by source_path, focus it, and dispatch a
+                    // scroll-to-node event the SessionViewer hook listens
+                    // for. For now this is a no-op so the chip click is
+                    // visible-only; the run-id and node-id are still useful
+                    // as a reference the user can copy.
+                    // TODO: wire to SessionPanel scroll-to-node.
+                  }}
+                />
+              </div>
+            );
+          }
+          if (!p.backend) return null;
           return (
             <SessionPanel
               key={p.id}
@@ -607,9 +653,35 @@ function AppInner() {
               onMetaChange={(snap) => onPanelSnapshot(p.id, snap)}
               onOpenSource={() => setSplashOpen(true)}
               onSettings={() => setSettingsOpen(true)}
-              onAiAnalysis={() => setAiAnalysisOpen(true)}
+              onJudgeSession={() => {
+                const summary = snapshots[p.id]?.activeSession?.summary;
+                if (!summary) return;
+                const ref: SessionRef = {
+                  session_id: summary.session_id,
+                  source_path: summary.source_path,
+                  title: summary.title ?? null,
+                  cwd: summary.cwd ?? null,
+                };
+                openJudgerPanel([ref]);
+              }}
+              onJudgeSessionFromList={(s) => {
+                const ref: SessionRef = {
+                  session_id: s.session_id,
+                  source_path: s.source_path,
+                  title: s.title ?? null,
+                  cwd: s.cwd ?? null,
+                };
+                openJudgerPanel([ref]);
+              }}
+              onSessionsLoaded={(providerId, root, sessions) => {
+                const key = `${providerId}::${root}`;
+                setSessionCatalog((m) => {
+                  const next = new Map(m);
+                  next.set(key, { providerId, root, sessions });
+                  return next;
+                });
+              }}
               onFeedback={() => setFeedbackOpen(true)}
-              aiNotReadyMsg={aiNotReadyMsg}
             />
           );
         })}
@@ -645,17 +717,6 @@ function AppInner() {
         onClose={() => setSettingsOpen(false)}
         onSave={onSaveSettings}
         onRemotesChanged={refreshRemotes}
-      />
-      <AiAnalysisDialog
-        open={aiAnalysisOpen}
-        settings={settings}
-        activeSession={activeSnapshot?.activeSession ?? null}
-        active={
-          activeSnapshot
-            ? { provider: activeSnapshot.active.provider, root: activeSnapshot.active.root }
-            : null
-        }
-        onClose={() => setAiAnalysisOpen(false)}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <FeedbackDialog
