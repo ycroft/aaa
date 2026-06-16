@@ -395,41 +395,45 @@ pub fn check_command_exists(cmd: String) -> bool {
     check.map(|s| s.success()).unwrap_or(false)
 }
 
-/// Export all sessions from a provider root to a target directory.
-/// Returns the canonical paths of all written files.
+/// Export one or more sessions as a unified bundle directory.
+/// Returns the absolute path of the bundle directory.
 #[tauri::command]
-pub fn export_all_sessions(
+pub fn export_sessions(
     provider_id: String,
-    root: String,
+    source_paths: Vec<String>,
+    root: Option<String>,
     target_dir: String,
-) -> Result<Vec<String>, String> {
+    scope: String,
+) -> Result<String, String> {
     info!(
-        "cmd export_all_sessions provider={} root={} target_dir={}",
-        provider_id, root, target_dir
+        "cmd export_sessions provider={} sessions={} target_dir={} scope={}",
+        provider_id,
+        source_paths.len(),
+        target_dir,
+        scope
     );
-    let res: Result<Vec<String>, String> = (|| {
-        let provider = providers::find(&provider_id)
-            .ok_or_else(|| format!("unknown provider: {}", provider_id))?;
-        let root_path = PathBuf::from(&root);
-        let sessions = provider.list_sessions(&root_path).map_err(err_to_string)?;
-
+    let res: Result<String, String> = (|| {
+        let scope = match scope.as_str() {
+            "single" => aaa_core::export::ExportScope::Single,
+            "all" => aaa_core::export::ExportScope::All,
+            other => return Err(format!("invalid scope: {}", other)),
+        };
+        let inputs = aaa_core::export::BundleInputs {
+            provider_id,
+            source_paths: source_paths.into_iter().map(PathBuf::from).collect(),
+            root: root.map(PathBuf::from),
+            scope,
+        };
         let dir = PathBuf::from(&target_dir);
         std::fs::create_dir_all(&dir).map_err(err_to_string)?;
-
-        let mut paths = Vec::new();
-        for s in &sessions {
-            let detail = provider.load_session(&PathBuf::from(&s.source_path)).map_err(err_to_string)?;
-            let json = serde_json::to_string_pretty(&detail).map_err(err_to_string)?;
-            let file_name = format!("{}.json", s.session_id);
-            let dest = dir.join(&file_name);
-            std::fs::write(&dest, json).map_err(err_to_string)?;
-            let canonical = std::fs::canonicalize(&dest).unwrap_or(dest).to_string_lossy().into_owned();
-            paths.push(canonical);
-        }
-        info!("export_all_sessions wrote {} files", paths.len());
-        Ok(paths)
+        let out = aaa_core::export::build_bundle(&inputs, &dir).map_err(err_to_string)?;
+        let canonical = std::fs::canonicalize(&out.bundle_dir)
+            .unwrap_or(out.bundle_dir)
+            .to_string_lossy()
+            .into_owned();
+        Ok(canonical)
     })();
-    warn_on_err("export_all_sessions", res)
+    warn_on_err("export_sessions", res)
 }
 
 /// Create work_dir, write prompt.txt, then launch the agent in a new terminal window.
@@ -509,45 +513,3 @@ pub fn launch_agent(
     Ok(())
 }
 
-/// Export a session as pretty-printed JSON to a user-chosen directory.
-/// Returns the canonical absolute path of the written file.
-#[tauri::command]
-pub fn export_session(
-    provider_id: String,
-    source_path: String,
-    target_dir: String,
-    file_name: String,
-) -> Result<String, String> {
-    info!(
-        "cmd export_session provider={} target_dir={} file_name={}",
-        provider_id, target_dir, file_name
-    );
-    let res: Result<String, String> = (|| {
-        // Defense-in-depth: reject file_name containing path separators.
-        if file_name.contains('/') || file_name.contains('\\') || file_name.is_empty() {
-            return Err("invalid file name".into());
-        }
-
-        let provider = providers::find(&provider_id)
-            .ok_or_else(|| format!("unknown provider: {}", provider_id))?;
-        let detail = provider
-            .load_session(&PathBuf::from(&source_path))
-            .map_err(err_to_string)?;
-
-        let json = serde_json::to_string_pretty(&detail).map_err(err_to_string)?;
-
-        let dir = PathBuf::from(&target_dir);
-        std::fs::create_dir_all(&dir).map_err(err_to_string)?;
-
-        let dest = dir.join(&file_name);
-        std::fs::write(&dest, json).map_err(err_to_string)?;
-
-        // Return canonical absolute path for status display.
-        let canonical = std::fs::canonicalize(&dest)
-            .unwrap_or(dest)
-            .to_string_lossy()
-            .into_owned();
-        Ok(canonical)
-    })();
-    warn_on_err("export_session", res)
-}
