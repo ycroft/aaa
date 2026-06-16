@@ -1537,7 +1537,7 @@ mark.search-hit {
 }
 .splash .panel {
   width: min(720px, 92vw);
-  height: min(720px, 85vh);
+  height: min(900px, 92vh);
   display: flex;
   flex-direction: column;
   background: var(--bg-1);
@@ -2701,7 +2701,6 @@ mark.search-hit {
 .splash-remote-list {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 320px;
   overflow-y: auto;
   /* Inset pad so the scrollbar doesn't visually hug the provider-card
      border. */
