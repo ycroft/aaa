@@ -315,6 +315,7 @@ export const en: Catalog = {
       prompt_label: "System prompt",
       prompt_hint: "Auto-generated from selected dimensions. Override here for this run only.",
       dimensions_label: "Dimensions",
+      dimensions_overridden_hint: "System prompt is set; dimension toggles are inert (kept only as metadata tags).",
       submit: "Start",
       reset: "Reset",
       error_no_sessions: "Pick at least one session",

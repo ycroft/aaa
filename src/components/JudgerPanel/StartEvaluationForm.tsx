@@ -42,7 +42,15 @@ export function StartEvaluationForm({
 
   const sessionList = useMemo(() => Array.from(selected.values()), [selected]);
 
+  // When the user provides a custom prompt, the backend uses it verbatim and
+  // ignores the dimensions section template (see core/src/judger/runner.rs).
+  // Reflect that in the UI by disabling the dimension toggles — they'd be
+  // misleading as live controls, though we still keep the current selection
+  // visible since it gets persisted to meta.json regardless.
+  const promptOverridden = promptOverride.trim().length > 0;
+
   function toggleDim(d: Dimension) {
+    if (promptOverridden) return;
     const next = new Set(dims);
     if (next.has(d)) next.delete(d);
     else next.add(d);
@@ -109,16 +117,23 @@ export function StartEvaluationForm({
         <label>{t("judger.start.dimensions_label")}</label>
         <div className="dim-grid">
           {ALL_DIMENSIONS.map((d) => (
-            <label key={d} className="dim-toggle">
+            <label
+              key={d}
+              className={`dim-toggle ${promptOverridden ? "disabled" : ""}`}
+            >
               <input
                 type="checkbox"
                 checked={dims.has(d)}
                 onChange={() => toggleDim(d)}
+                disabled={promptOverridden}
               />
               {t(`judger.dim.${d}` as const)}
             </label>
           ))}
         </div>
+        {promptOverridden && (
+          <div className="hint">{t("judger.start.dimensions_overridden_hint")}</div>
+        )}
       </section>
 
       <section>

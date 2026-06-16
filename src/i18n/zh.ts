@@ -313,6 +313,7 @@ export const zh = {
       prompt_label: "系统提示词",
       prompt_hint: "默认按勾选维度自动生成。可手改本次提示词。",
       dimensions_label: "评估维度",
+      dimensions_overridden_hint: "已填写系统提示词，维度勾选不生效（仅作为元数据标签）。",
       submit: "启动",
       reset: "清空",
       error_no_sessions: "请至少选择一个会话",

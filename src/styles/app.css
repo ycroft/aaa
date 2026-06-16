@@ -2954,6 +2954,10 @@ mark.search-hit {
   cursor: pointer;
   user-select: none;
 }
+.judger-start-form .dim-toggle.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .judger-start-form .error {
   padding: 6px 8px;
   background: var(--bg-2);
