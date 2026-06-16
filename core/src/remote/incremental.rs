@@ -400,6 +400,12 @@ pub async fn sync_opencode_incremental(
         .map_err(|e| RemoteError::Sftp(format!("open cache db {:?}: {}", cache_db, e)))?;
     let wm = read_watermarks(&conn)
         .map_err(|e| RemoteError::Sftp(format!("read watermarks: {}", e)))?;
+    info!(
+        "{} incremental start: cache_db={:?} initial watermarks session={} message={} part={} \
+         (all-zeros means cache predates incremental sync — first run will pull entire history \
+         over SQL exec, watch for MAX_STDOUT={} cap)",
+        db_relpath, cache_db, wm.session, wm.message, wm.part, MAX_STDOUT
+    );
 
     let remote_db = format!("{}/{}", remote_root.trim_end_matches('/'), db_relpath);
     let stdin = build_query_script(&wm);
@@ -407,6 +413,11 @@ pub async fn sync_opencode_incremental(
 
     ctx.check_cancel()?;
     let stdout = fs.exec(&argv, stdin.as_bytes(), MAX_STDOUT).await?;
+    info!(
+        "{} incremental: sqlite3 stdout received, {} bytes",
+        db_relpath,
+        stdout.len()
+    );
 
     let bytes_done = stdout.len() as u64;
     ctx.check_cancel()?;

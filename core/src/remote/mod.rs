@@ -367,6 +367,13 @@ pub async fn open_for_provider(
 
     // ----- L0: mtime short-circuit (whitelist providers only) -----
     if let Some(files) = provider.remote_sync_files() {
+        log::info!(
+            "L0 check: provider={} remote_root={} local_root={:?} whitelist={:?}",
+            provider_id,
+            remote_root,
+            local_root,
+            files
+        );
         if all_files_match(&mut sess, &remote_root, &local_root, &files).await {
             log::info!(
                 "L0 short-circuit: all whitelisted files match local for {}@{}",
@@ -379,6 +386,17 @@ pub async fn open_for_provider(
                 sync_stats: SyncStats::default(),
             });
         }
+        log::info!(
+            "L0 mismatch for {}@{}: at least one whitelisted file differs (size/mtime); \
+             proceeding to L1/L2",
+            provider_id,
+            remote.id
+        );
+    } else {
+        log::info!(
+            "L0 skipped: provider={} has no remote_sync_files whitelist (whole-tree sync provider)",
+            provider_id
+        );
     }
 
     // ----- L1/L2: provider-specific incremental strategy -----
@@ -389,10 +407,22 @@ pub async fn open_for_provider(
     // sqlite3 version too old, exec timeout, …) gets byte-synced individually
     // via sync_files, while the others keep their KB-level incremental.
     let strategy = provider.remote_sync_strategy();
+    log::info!(
+        "sync strategy for provider={}: {:?}",
+        provider_id,
+        strategy
+    );
     if matches!(strategy, RemoteSyncStrategy::OpencodeIncremental) {
         ctx.check_cancel()?;
         ctx.report(&SyncProgress::new(SyncPhase::ProbingRemote));
-        if incremental::probe_sqlite3(&mut sess).await {
+        let probe_ok = incremental::probe_sqlite3(&mut sess).await;
+        log::info!(
+            "L1 probe_sqlite3 for {}@{} => {}",
+            provider_id,
+            remote.id,
+            if probe_ok { "available" } else { "UNAVAILABLE (will fall back to L3 full SFTP)" }
+        );
+        if probe_ok {
             // Every (db_relpath, sidecar_files) bundle the strategy knows about.
             // sidecars are the WAL/SHM that tag along with each db; they don't
             // get incremental treatment but they DO need byte-sync so the cache
@@ -411,17 +441,33 @@ pub async fn open_for_provider(
                 // nor a real "new" remote, just absent on this host.
                 let remote_db_path = format!("{}/{}", remote_root.trim_end_matches('/'), db_rel);
                 if sess.metadata(&remote_db_path).await.is_err() {
+                    log::info!(
+                        "L2 db={}: remote path {} absent on this host, skipping",
+                        db_rel,
+                        remote_db_path
+                    );
                     continue;
                 }
 
                 // First sync ever: cache empty → must byte-sync this db (and
                 // sidecars) to bootstrap before incremental can run.
-                if !local_root.join(db_rel).exists() {
+                let cache_db_path = local_root.join(db_rel);
+                if !cache_db_path.exists() {
+                    log::info!(
+                        "L2 db={}: cache {:?} missing → bootstrap byte-sync (db + sidecars)",
+                        db_rel,
+                        cache_db_path
+                    );
                     byte_sync_files.push(db_rel);
                     byte_sync_files.extend(sidecars.iter().copied());
                     continue;
                 }
 
+                log::info!(
+                    "L2 db={}: cache {:?} present → attempting SQL incremental",
+                    db_rel,
+                    cache_db_path
+                );
                 match incremental::sync_opencode_incremental(
                     &mut sess,
                     &remote_root,
@@ -434,6 +480,11 @@ pub async fn open_for_provider(
                     Ok(s) => {
                         any_l2_succeeded = true;
                         total.bytes_pulled = total.bytes_pulled.saturating_add(s.bytes_pulled);
+                        log::info!(
+                            "L2 db={}: SQL incremental ok ({} bytes pulled); sidecars queued for byte-sync",
+                            db_rel,
+                            s.bytes_pulled
+                        );
                         // Sidecars still need byte-sync (their mtime drives L0
                         // and ensures cache parity with the remote).
                         byte_sync_files.extend(sidecars.iter().copied());
@@ -451,6 +502,12 @@ pub async fn open_for_provider(
             }
 
             if !byte_sync_files.is_empty() {
+                log::info!(
+                    "byte-sync stage for {}@{}: files={:?}",
+                    provider_id,
+                    remote.id,
+                    byte_sync_files
+                );
                 match mirror::sync_files(
                     &mut sess,
                     &remote_root,
@@ -486,6 +543,14 @@ pub async fn open_for_provider(
             }
 
             if any_l2_succeeded || !byte_sync_files.is_empty() {
+                log::info!(
+                    "L1/L2 finished for {}@{}: any_l2_succeeded={} byte_sync_files_pulled={} bytes_total={}",
+                    provider_id,
+                    remote.id,
+                    any_l2_succeeded,
+                    total.files_pulled,
+                    total.bytes_pulled
+                );
                 ctx.report(&SyncProgress {
                     phase: SyncPhase::Done,
                     current_file: None,
@@ -501,12 +566,33 @@ pub async fn open_for_provider(
             }
             // Else: no candidate db existed remotely → fall through to L3 to
             // keep the original "missing root" / "empty whitelist" behaviour.
+            log::info!(
+                "L1/L2 yielded nothing for {}@{} (no candidate dbs existed remotely); \
+                 falling through to L3 full SFTP",
+                provider_id,
+                remote.id
+            );
         } else {
-            log::info!("remote sqlite3 unavailable; using full SFTP for {}", provider_id);
+            log::info!(
+                "L3 entry for {}@{}: remote sqlite3 unavailable, using full SFTP",
+                provider_id,
+                remote.id
+            );
         }
+    } else {
+        log::info!(
+            "L3 entry for {}@{}: provider strategy is Default, using full SFTP",
+            provider_id,
+            remote.id
+        );
     }
 
     // ----- L3: existing full SFTP path -----
+    log::info!(
+        "L3 sync starting for {}@{}",
+        provider_id,
+        remote.id
+    );
     let stats = match provider.remote_sync_files() {
         Some(files) => mirror::sync_files(&mut sess, &remote_root, &local_root, &files, ctx).await?,
         None => mirror::sync_dir(&mut sess, &remote_root, &local_root, ctx).await?,
@@ -551,11 +637,27 @@ async fn all_files_match(
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0);
                 if l.len() != r.size || lmtime != r.mtime {
+                    log::info!(
+                        "L0 mismatch reason: file {} differs (remote size={} mtime={}, local size={} mtime={})",
+                        rel,
+                        r.size,
+                        r.mtime,
+                        l.len(),
+                        lmtime
+                    );
                     return false;
                 }
             }
             (None, None) => continue, // both absent — fine
-            _ => return false,         // one-sided presence → mismatch
+            (rm, lm) => {
+                log::info!(
+                    "L0 mismatch reason: file {} one-sided presence (remote_present={} local_present={})",
+                    rel,
+                    rm.is_some(),
+                    lm.is_some()
+                );
+                return false;
+            }
         }
     }
     true
