@@ -3001,11 +3001,21 @@ mark.search-hit {
 .session-picker {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+.session-picker-section {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
   border: 1px solid var(--border-2);
   border-radius: 4px;
   background: var(--bg-2);
   padding: 4px;
+}
+.session-picker-section .section-header {
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 2px 6px;
 }
 .session-picker input[type="search"] {
   width: 100%;
@@ -3057,10 +3067,58 @@ mark.search-hit {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-picker .footer {
+.session-picker-queue {
+  max-height: 140px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.session-picker-queue .queue-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--text-1);
+}
+.session-picker-queue .queue-row:hover {
+  background: var(--bg-hover);
+}
+.session-picker-queue .queue-row .title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-picker-queue .queue-row .provider {
+  font-size: 10px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.session-picker-queue .queue-row .cwd {
+  grid-column: 1 / 4;
   font-size: 11px;
   color: var(--text-2);
-  padding: 2px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-picker-queue .queue-row .remove {
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.session-picker-queue .queue-row .remove:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
 }
 .session-picker .muted {
   padding: 6px;
