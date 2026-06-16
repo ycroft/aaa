@@ -106,6 +106,21 @@ function AppInner() {
   const [sessionCatalog, setSessionCatalog] = useState<
     Map<string, { providerId: string; root: string; sessions: SessionSummary[] }>
   >(new Map());
+  // Stable handler — must NOT be re-created per render or it re-triggers
+  // SessionPanel's `refreshSessions` (which depends on it), causing an
+  // infinite list_sessions loop. `setSessionCatalog` is identity-stable,
+  // and the functional update form means we never need to capture state.
+  const handleSessionsLoaded = useCallback(
+    (providerId: string, root: string, sessions: SessionSummary[]) => {
+      const key = `${providerId}::${root}`;
+      setSessionCatalog((m) => {
+        const next = new Map(m);
+        next.set(key, { providerId, root, sessions });
+        return next;
+      });
+    },
+    [],
+  );
   const hint = useStatusHint();
 
   // ---- Initial load: providers + settings + remotes, then show splash. ----
@@ -673,14 +688,7 @@ function AppInner() {
                 };
                 openJudgerPanel([ref]);
               }}
-              onSessionsLoaded={(providerId, root, sessions) => {
-                const key = `${providerId}::${root}`;
-                setSessionCatalog((m) => {
-                  const next = new Map(m);
-                  next.set(key, { providerId, root, sessions });
-                  return next;
-                });
-              }}
+              onSessionsLoaded={handleSessionsLoaded}
               onFeedback={() => setFeedbackOpen(true)}
             />
           );
