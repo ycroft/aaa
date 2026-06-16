@@ -77,10 +77,18 @@ interface Props {
   onMetaChange: (snapshot: SessionPanelSnapshot) => void;
   onOpenSource: () => void;
   onSettings: () => void;
-  onAiAnalysis: () => void;
   onFeedback: () => void;
-  /** Tooltip used by the toolbar when the AI button isn't ready. */
-  aiNotReadyMsg: string | null;
+  /** Toolbar judge button — V1 evaluates the active session. */
+  onJudgeSession?: () => void;
+  /** SessionList right-click — V1 evaluates the picked session. */
+  onJudgeSessionFromList?: (s: SessionSummary) => void;
+  /** Pushed up whenever a fresh session list lands so the JudgerPanel picker
+   *  can build a flattened "all currently-open data sources" view. */
+  onSessionsLoaded?: (
+    providerId: string,
+    root: string,
+    sessions: SessionSummary[],
+  ) => void;
 }
 
 export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function SessionPanel(
@@ -92,9 +100,10 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     onMetaChange,
     onOpenSource,
     onSettings,
-    onAiAnalysis,
     onFeedback,
-    aiNotReadyMsg,
+    onJudgeSession,
+    onJudgeSessionFromList,
+    onSessionsLoaded,
   },
   ref,
 ) {
@@ -144,6 +153,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
       setSessions(list);
       setStatus(t("status.loaded_sessions", { count: list.length }));
       setError(null);
+      onSessionsLoaded?.(backend.provider.id, backend.root, list);
 
       // Kick off the async skill-scan pass once the list is in. Empty list
       // = nothing to scan; bail without spawning.
@@ -174,7 +184,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     } finally {
       setBusy(false);
     }
-  }, [backend.provider.id, backend.root, t]);
+  }, [backend.provider.id, backend.root, t, onSessionsLoaded]);
 
   useEffect(() => {
     setActivePath(null);
@@ -357,14 +367,8 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
         rootLabel={rootLabel}
         onExport={() => void handleExport()}
         canExport={canExport}
-        onAiAnalysis={() => {
-          if (aiNotReadyMsg) {
-            window.alert(aiNotReadyMsg);
-            return;
-          }
-          onAiAnalysis();
-        }}
-        canAiAnalysis={true}
+        onJudgeSession={onJudgeSession}
+        canJudgeSession={!!activeSession}
         onFeedback={onFeedback}
         hubConnected={hubConnected}
       />
@@ -375,6 +379,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
           activeId={activePath}
           onPick={(s) => void onSelectSession(s)}
           busy={busy}
+          onJudgeSession={onJudgeSessionFromList}
         />
         <SessionViewer
           session={activeSession}

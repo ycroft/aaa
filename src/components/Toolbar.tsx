@@ -16,8 +16,8 @@ interface Props {
   rootLabel: string;
   onExport: () => void;
   canExport: boolean;
-  onAiAnalysis: () => void;
-  canAiAnalysis: boolean;
+  onJudgeSession?: () => void;
+  canJudgeSession: boolean;
   onFeedback: () => void;
   hubConnected: boolean;
 }
@@ -35,8 +35,8 @@ export function Toolbar({
   rootLabel,
   onExport,
   canExport,
-  onAiAnalysis,
-  canAiAnalysis,
+  onJudgeSession,
+  canJudgeSession,
   onFeedback,
   hubConnected,
 }: Props) {
@@ -111,11 +111,11 @@ export function Toolbar({
       <div className="group">
         <button
           className="tbtn"
-          onClick={onAiAnalysis}
-          disabled={!canAiAnalysis}
-          data-hint={t("toolbar.ai_analysis_hint")}
+          onClick={() => onJudgeSession?.()}
+          disabled={!canJudgeSession}
+          data-hint={t("toolbar.judge_session_hint")}
         >
-          {t("toolbar.ai_analysis")}
+          {t("toolbar.judge_session")}
         </button>
       </div>
       <span className="sep" />
