@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { tempDir } from "@tauri-apps/api/path";
 import type { AppSettings, ProviderInfo, SessionDetail, TemplateScope } from "../types";
 import { api } from "../api";
-import { sanitizeFileName } from "../format";
 import { useT } from "../i18n";
 
 interface Props {
@@ -53,18 +52,25 @@ export function AiAnalysisDialog({ open, settings, activeSession, active, onClos
       const td = await tempDir();
       const workDir = `${td}aaa-analysis-${Date.now()}`;
 
-      let exportedPaths: string[];
-      if (scope === "all") {
-        exportedPaths = await api.exportAllSessions(active.provider.id, active.root, workDir);
-      } else {
-        if (!activeSession) return;
-        const fileName = `${sanitizeFileName(activeSession.summary.title, activeSession.summary.session_id)}.json`;
-        const path = await api.exportSession(active.provider.id, activeSession.summary.source_path, workDir, fileName);
-        exportedPaths = [path];
-      }
+      const sourcePaths =
+        scope === "all"
+          ? (await api.listSessions(active.provider.id, active.root)).map((s) => s.source_path)
+          : activeSession ? [activeSession.summary.source_path] : [];
+      if (sourcePaths.length === 0) return;
 
-      const fileList = exportedPaths.map((p) => `- ${p}`).join("\n");
-      const fullPrompt = [promptText, appendText, `\n${t("ai_dialog.exported_files_label")}\n${fileList}`]
+      const bundleDir = await api.exportSessions(
+        active.provider.id,
+        sourcePaths,
+        active.root,
+        workDir,
+        scope,
+      );
+
+      const fullPrompt = [
+        promptText,
+        appendText,
+        `\n${t("ai_dialog.exported_files_label")}\n- ${bundleDir}`,
+      ]
         .filter(Boolean)
         .join("\n\n");
 

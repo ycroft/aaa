@@ -44,16 +44,16 @@ export const api = {
     invoke<RemoteOpenResult>("remote_open", { remoteId, providerId, taskId }),
   remoteCancel: (taskId: string) =>
     invoke<void>("remote_cancel", { taskId }),
-  exportSession: (
+  exportSessions: (
     providerId: string,
-    sourcePath: string,
+    sourcePaths: string[],
+    root: string | null,
     targetDir: string,
-    fileName: string,
-  ) => invoke<string>("export_session", { providerId, sourcePath, targetDir, fileName }),
+    scope: "single" | "all",
+  ) =>
+    invoke<string>("export_sessions", { providerId, sourcePaths, root, targetDir, scope }),
   checkCommandExists: (cmd: string) =>
     invoke<boolean>("check_command_exists", { cmd }),
-  exportAllSessions: (providerId: string, root: string, targetDir: string) =>
-    invoke<string[]>("export_all_sessions", { providerId, root, targetDir }),
   launchAgent: (cmdTemplate: string, workDir: string, promptContent: string) =>
     invoke<void>("launch_agent", { cmdTemplate, workDir, promptContent }),
 

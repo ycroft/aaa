@@ -19,7 +19,7 @@ import type {
   SessionSummary,
 } from "../types";
 import { EMPTY_FILTER } from "../types";
-import { exportTimestamp, sanitizeFileName, shortPath } from "../format";
+import { shortPath } from "../format";
 import { useT } from "../i18n";
 
 import { Toolbar } from "./Toolbar";
@@ -164,10 +164,6 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
 
   const handleExport = useCallback(async () => {
     if (!activeSession) return;
-    const summary = activeSession.summary;
-    const titleSegment = sanitizeFileName(summary.title, summary.session_id);
-    const fileName = `${titleSegment}__${exportTimestamp()}.json`;
-
     const targetDir = await openDialog({ directory: true, multiple: false });
     if (typeof targetDir !== "string") {
       setStatus(t("status.export_cancelled"));
@@ -177,20 +173,21 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     setExporting(true);
     setError(null);
     try {
-      const exportedPath = await api.exportSession(
+      const bundleDir = await api.exportSessions(
         backend.provider.id,
-        summary.source_path,
+        [activeSession.summary.source_path],
+        backend.root,
         targetDir,
-        fileName,
+        "single",
       );
-      setStatus(t("status.exported_to", { path: shortPath(exportedPath, 60) }));
+      setStatus(t("status.exported_to", { path: shortPath(bundleDir, 60) }));
     } catch (e: unknown) {
       setError(String(e));
       setStatus(t("status.export_failed"));
     } finally {
       setExporting(false);
     }
-  }, [activeSession, backend.provider.id, t]);
+  }, [activeSession, backend.provider.id, backend.root, t]);
 
   // ---- Imperative handle for App-level keyboard shortcuts. Scoped to this
   //      panel's DOM so hidden panels never accidentally steal focus. ----

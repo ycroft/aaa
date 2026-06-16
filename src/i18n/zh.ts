@@ -14,7 +14,7 @@ export const zh = {
     refresh_sessions: "刷新会话",
     refresh_sessions_hint: "重新扫描当前目录",
     export_session: "导出当前会话…",
-    export_session_hint: "将已加载的会话保存为 JSON",
+    export_session_hint: "将已加载的会话保存为分析 bundle 目录",
     ai_analysis: "AI 分析…",
     ai_analysis_hint: "启动 AI 辅助分析",
     settings: "设置…",

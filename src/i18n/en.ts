@@ -16,7 +16,7 @@ export const en: Catalog = {
     refresh_sessions: "Refresh sessions",
     refresh_sessions_hint: "Re-scan the active directory",
     export_session: "Export current session…",
-    export_session_hint: "Save the loaded session as JSON",
+    export_session_hint: "Save the loaded session as an analysis bundle directory",
     ai_analysis: "AI analysis…",
     ai_analysis_hint: "Start AI-assisted analysis",
     settings: "Settings…",
