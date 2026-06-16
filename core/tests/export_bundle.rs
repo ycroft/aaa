@@ -69,3 +69,33 @@ fn index_jsonl_has_one_row_per_session_with_files_paths() {
     assert!(row["files"]["transcript"].as_str().unwrap().ends_with("transcript.md"));
     assert!(row["files"]["raw"].as_str().unwrap().ends_with("raw.json"));
 }
+
+#[test]
+fn events_jsonl_has_one_row_per_node_with_kind_and_brief() {
+    let provider = aaa_core::providers::find("claude-code").unwrap();
+    let Some(root) = provider.default_root() else { return; };
+    if !root.exists() { return; }
+    let sessions = match provider.list_sessions(&root) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return,
+    };
+    let one = sessions[0].source_path.clone();
+    let detail = provider.load_session(&PathBuf::from(&one)).unwrap();
+    if detail.nodes.is_empty() { return; }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let inputs = BundleInputs {
+        provider_id: "claude-code".into(),
+        source_paths: vec![PathBuf::from(&one)],
+        root: Some(root),
+        scope: ExportScope::Single,
+    };
+    let out = build_bundle(&inputs, tmp.path()).unwrap();
+    let events_path = out.bundle_dir.join(format!("sessions/{}/events.jsonl", detail.summary.session_id));
+    let s = std::fs::read_to_string(&events_path).unwrap();
+    let rows: Vec<&str> = s.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(rows.len(), detail.nodes.len());
+    let first: serde_json::Value = serde_json::from_str(rows[0]).unwrap();
+    assert_eq!(first["i"], 0);
+    assert!(first["kind"].as_str().is_some());
+}

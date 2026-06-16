@@ -107,8 +107,10 @@ pub fn build_bundle(inputs: &BundleInputs, target_dir: &Path) -> anyhow::Result<
         let row = build_index_row(&detail, &sid);
         session_anomalies.push((sid.clone(), row.anomalies.clone()));
         writeln!(index_file, "{}", serde_json::to_string(&row)?)?;
-        // events.jsonl / transcript.md / raw.json — Tasks 4-6 will fill these in.
-        fs::write(session_subdir.join("events.jsonl"), "")?;
+        // events.jsonl
+        let mut events_file = fs::File::create(session_subdir.join("events.jsonl"))?;
+        write_events_jsonl(&detail, &mut events_file)?;
+        // transcript.md / raw.json — Tasks 5-6 will fill these in.
         fs::write(session_subdir.join("transcript.md"), "")?;
         fs::write(
             session_subdir.join("raw.json"),
@@ -209,9 +211,164 @@ fn build_index_row(detail: &crate::model::SessionDetail, sid: &str) -> IndexRow 
 }
 
 fn detect_anomalies(detail: &crate::model::SessionDetail) -> Vec<String> {
-    // Stub for Task 4: we'll fill ctx_jump / tool_retry detection there.
-    // For now, flag peak_ctx > 80% of best-known model window only when easy;
-    // otherwise leave empty so the row is well-formed.
-    let _ = detail;
-    Vec::new()
+    let mut out = Vec::new();
+    let mut prev_ctx: Option<u64> = None;
+    let mut retry_count = 0u32;
+    let mut last_seen: std::collections::HashMap<(String, String), String> =
+        std::collections::HashMap::new();
+    for n in &detail.nodes {
+        if let Some(curr) = n.cumulative_context_tokens {
+            if let Some(prev) = prev_ctx {
+                if prev > 0 && curr > prev {
+                    let pct = (curr - prev) as f64 / prev as f64;
+                    if pct >= 0.30 {
+                        out.push(format!("ctx_jump@{}", n.id));
+                    }
+                }
+            }
+            prev_ctx = Some(curr);
+        }
+        for p in &n.parts {
+            if let crate::model::MessagePart::ToolUse { name, input, .. } = p {
+                let key = (name.clone(), input.clone());
+                if last_seen.contains_key(&key) {
+                    retry_count += 1;
+                    if retry_count >= 4 {
+                        out.push(format!("tool_retry_loop@{}", n.id));
+                        retry_count = 0;
+                    }
+                } else {
+                    retry_count = 0;
+                    last_seen.insert(key, n.id.clone());
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EventRow {
+    pub i: u32,
+    pub id: String,
+    pub ts: Option<String>,
+    pub kind: String,
+    pub model: Option<String>,
+    pub tool: Option<String>,
+    pub tool_input_brief: Option<String>,
+    pub ctx_after: Option<u64>,
+    pub ctx_jump_pct: Option<f64>,
+    pub tok_in: Option<u64>,
+    pub tok_out: Option<u64>,
+    pub dur_ms: Option<u64>,
+    pub skill_id: Option<String>,
+    pub is_error: bool,
+    pub retry_of: Option<String>,
+    pub text_brief: Option<String>,
+}
+
+fn write_events_jsonl(
+    detail: &crate::model::SessionDetail,
+    file: &mut fs::File,
+) -> anyhow::Result<()> {
+    use crate::model::MessagePart;
+
+    // Run the canonical skill detector once; map node_id -> skill_id for fast lookup.
+    let provider = crate::providers::find(&detail.summary.provider_id);
+    let cwd = detail.summary.cwd.as_deref().map(std::path::Path::new);
+    let roots = provider.as_ref().map(|p| p.skill_roots(cwd)).unwrap_or_default();
+    let registry = crate::skills::SkillRegistry::build(&roots);
+    let mut detector = crate::skill_detect::SkillDetector::new(&registry);
+    crate::skill_detect::walk_session_nodes(&detail.nodes, &mut detector);
+    let usage = detector.into_usage_rows();
+    let mut node_skill: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for u in &usage {
+        for nid in &u.node_ids {
+            node_skill.insert(nid.clone(), u.skill_id.clone());
+        }
+    }
+
+    // Track tool retry chains: identical (tool_name, input) within the session
+    // points back to its predecessor node id.
+    let mut last_seen: std::collections::HashMap<(String, String), String> =
+        std::collections::HashMap::new();
+    let mut prev_ctx: Option<u64> = None;
+
+    for (i, n) in detail.nodes.iter().enumerate() {
+        let mut tool: Option<String> = None;
+        let mut tool_input_brief: Option<String> = None;
+        let mut retry_of: Option<String> = None;
+        let mut is_error = false;
+        let mut text_brief: Option<String> = None;
+        for p in &n.parts {
+            match p {
+                MessagePart::ToolUse { name, input, .. } => {
+                    if tool.is_none() {
+                        tool = Some(name.clone());
+                        tool_input_brief = Some(brief(input, 120));
+                        let key = (name.clone(), input.clone());
+                        if let Some(prev_id) = last_seen.get(&key) {
+                            retry_of = Some(prev_id.clone());
+                        }
+                        last_seen.insert(key, n.id.clone());
+                    }
+                }
+                MessagePart::ToolResult { is_error: e, .. } => {
+                    if *e { is_error = true; }
+                }
+                MessagePart::Text { text } | MessagePart::Thinking { text } => {
+                    if text_brief.is_none() && !text.is_empty() {
+                        text_brief = Some(brief(text, 120));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let ctx_after = n.cumulative_context_tokens;
+        let ctx_jump_pct = match (prev_ctx, ctx_after) {
+            (Some(prev), Some(curr)) if prev > 0 && curr >= prev => {
+                Some((curr - prev) as f64 / prev as f64)
+            }
+            _ => None,
+        };
+        if ctx_after.is_some() { prev_ctx = ctx_after; }
+
+        let row = EventRow {
+            i: i as u32,
+            id: n.id.clone(),
+            ts: n.timestamp.clone(),
+            kind: kind_str(&n.kind).to_string(),
+            model: n.model.clone(),
+            tool,
+            tool_input_brief,
+            ctx_after,
+            ctx_jump_pct,
+            tok_in: n.usage.as_ref().map(|u| u.input_tokens),
+            tok_out: n.usage.as_ref().map(|u| u.output_tokens),
+            dur_ms: n.usage.as_ref().and_then(|u| u.generation_duration_ms),
+            skill_id: node_skill.get(&n.id).cloned(),
+            is_error,
+            retry_of,
+            text_brief,
+        };
+        writeln!(file, "{}", serde_json::to_string(&row)?)?;
+    }
+    Ok(())
+}
+
+fn kind_str(k: &crate::model::NodeKind) -> &'static str {
+    use crate::model::NodeKind::*;
+    match k {
+        User => "user", Assistant => "assistant", System => "system",
+        ToolResult => "tool_result", Sidechain => "sidechain", Meta => "meta",
+    }
+}
+
+fn brief(s: &str, max_chars: usize) -> String {
+    let trimmed: String = s.chars().take(max_chars).collect();
+    let cleaned = trimmed.replace('\n', " ").replace('\r', " ");
+    if s.chars().count() > max_chars { format!("{}…", cleaned) } else { cleaned }
 }
