@@ -214,6 +214,8 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 |------|---------|
 | `tools/aaa/release-notes.txt` | 在文件**顶部**追加新版本块：先写 `vX.Y.Z` 标题行，再用一行短横线分隔，最后用 `- ` 列出本次提交的关键改动。该文件由 `src-tauri/src/commands.rs` 通过 `include_str!("../../release-notes.txt")` 在编译期内联到二进制，About 对话框直接展示其内容。 |
 
+> **Release notes 写功能、不写代码。** `release-notes.txt` 与 GitHub Release body 都是面向用户的——同事关心"这版能多干什么、修了什么看得见的毛病"，不关心改了哪个 `.rs` 文件、抽出了哪个 trait、删掉了哪个内部函数。每条 bullet 应当从用户视角描述行为变化（看得到什么、原来错在哪、现在怎样），文件路径 / 类型名 / 函数名 / 重构动作一律不出现。改动如果纯属内部重构、用户完全无感，那就不必单列一条；只在它解锁了未来某个能力时简短带一句。这条规则同时适用于中文 `release-notes.txt` 和翻译后的 GitHub Release body。
+
 版本号语义参考 SemVer：
 
 - **patch**（`0.1.0 → 0.1.1`）：bug 修复、UI 微调、依赖小升级（注：纯文档改动**不**走 patch，不动版本号）
@@ -394,6 +396,7 @@ gh release create v<ver> \
 - `gh auth status` 不通时让用户 `gh auth login`，需要 `repo` scope；这一步不要自动跑，登录是交互式的。
 - 不要给 release 打 `--draft` 或 `--prerelease`，除非用户明确要求。
 - 发布后用 `gh release view v<ver>` 抽查：title / assets / body 三项都对再算完。
+- **Install 表格只能列实际上传成的 asset。** body 末尾的 `### Install` 表格里每一行的文件名，必须能在该 release 的 assets 里找到——同事点表格里的链接是要下载的，行在表里但 asset 不在就是死链。如果某次构建漏出了 NSIS 或 MSI（比如只在 Linux 机上构建、或者 WiX/NSIS 工具链缺失），上传前就把对应那一行从表里删掉，不要留着"理论上有"的行。`gh release view v<ver> --json body,assets` 可以一眼看出 body 里写了哪些文件、assets 里实际有哪些文件，发布完务必对一遍。
 
 ### 脚本一览
 
