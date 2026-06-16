@@ -157,6 +157,7 @@ export const zh = {
     empty_title: "暂无打开的数据源",
     empty_lead: "选择一个本地后端、远程主机，或团队（开发中），即可在新页签里查看会话日志。",
     empty_open_button: "打开数据源…",
+    empty_judger_button: "进入评估器",
   },
   settings: {
     title: "设置",

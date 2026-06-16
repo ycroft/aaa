@@ -625,7 +625,10 @@ function AppInner() {
       />
       <div className="app-panels">
         {panels.length === 0 && (
-          <EmptyWorkspace onOpenSplash={() => setSplashOpen(true)} />
+          <EmptyWorkspace
+            onOpenSplash={() => setSplashOpen(true)}
+            onOpenJudger={() => openJudgerPanel()}
+          />
         )}
         {panels.map((p) => {
           const visible = p.id === activePanelId;

@@ -159,6 +159,7 @@ export const en: Catalog = {
     empty_title: "No data source open",
     empty_lead: "Pick a local backend, a remote host, or Team (in development) to open it in a new tab.",
     empty_open_button: "Open a source…",
+    empty_judger_button: "Open Judger",
   },
   settings: {
     title: "Settings",

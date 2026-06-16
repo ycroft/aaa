@@ -2639,6 +2639,12 @@ mark.search-hit {
   color: var(--text-2);
   line-height: 1.6;
 }
+.empty-workspace-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
 
 /* ================================================================
    Provider splash — Personal / Team tabs + scrollable remote list
