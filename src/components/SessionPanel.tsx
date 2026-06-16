@@ -368,7 +368,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
         onExport={() => void handleExport()}
         canExport={canExport}
         onJudgeSession={onJudgeSession}
-        canJudgeSession={!!activeSession}
+        canJudgeSession={true}
         onFeedback={onFeedback}
         hubConnected={hubConnected}
       />

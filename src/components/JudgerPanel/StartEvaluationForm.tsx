@@ -8,32 +8,29 @@ import { ALL_DIMENSIONS } from "./dims";
 interface Props {
   sources: PickerSource[];
   defaultAgentCmd: string;
-  preselected?: SessionRef[];
+  /** Shared "pending evaluation queue" lifted to JudgerPanel/App so that
+   *  right-clicks on session rows can add to it whether the panel was
+   *  already open or not. */
+  selected: Map<string, SessionRef>;
+  onSelectedChange: (next: Map<string, SessionRef>) => void;
   /** Receives the list of started run-ids AND the agent_cmd the user submitted,
    *  so the parent can persist `last_cmd` without a side-channel. */
   onCommitted: (runIds: string[], agentCmd: string) => void;
   /** Clear the form back to defaults. The parent typically force-remounts
    *  the form via key=, but exposing the action lets the user trigger it
-   *  explicitly (e.g. when they came in via right-click and want to start
-   *  fresh instead). */
+   *  explicitly. */
   onReset: () => void;
 }
 
 export function StartEvaluationForm({
   sources,
   defaultAgentCmd,
-  preselected,
+  selected,
+  onSelectedChange,
   onCommitted,
   onReset,
 }: Props) {
   const { t } = useI18n();
-  const initialSelection = useMemo(() => {
-    const m = new Map<string, SessionRef>();
-    for (const s of preselected ?? []) m.set(s.source_path, s);
-    return m;
-  }, [preselected]);
-
-  const [selected, setSelected] = useState<Map<string, SessionRef>>(initialSelection);
   const [agentCmd, setAgentCmd] = useState(defaultAgentCmd);
   const [dims, setDims] = useState<Set<Dimension>>(new Set(ALL_DIMENSIONS));
   const [promptOverride, setPromptOverride] = useState("");
@@ -99,7 +96,11 @@ export function StartEvaluationForm({
 
       <section>
         <label>{t("judger.start.sessions_label")}</label>
-        <SessionPicker sources={sources} selected={selected} onChange={setSelected} />
+        <SessionPicker
+          sources={sources}
+          selected={selected}
+          onChange={onSelectedChange}
+        />
       </section>
 
       <section>

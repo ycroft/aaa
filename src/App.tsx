@@ -102,7 +102,7 @@ function AppInner() {
   const [hubConnected, setHubConnected] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
-  const [judgerPreselected, setJudgerPreselected] = useState<SessionRef[] | null>(null);
+  const [judgerQueue, setJudgerQueue] = useState<Map<string, SessionRef>>(new Map());
   const [sessionCatalog, setSessionCatalog] = useState<
     Map<string, { providerId: string; root: string; sessions: SessionSummary[] }>
   >(new Map());
@@ -242,7 +242,7 @@ function AppInner() {
     [addOrFocusPanel, t],
   );
 
-  const openJudgerPanel = useCallback((preselected?: SessionRef[]) => {
+  const openJudgerPanel = useCallback(() => {
     setPanels((prev) => {
       if (prev.some((p) => p.identity === JUDGER_PANEL_IDENTITY)) {
         // Already open — just focus it.
@@ -260,10 +260,15 @@ function AppInner() {
       return [...prev, desc];
     });
     setActivePanelId(JUDGER_PANEL_IDENTITY);
-    if (preselected && preselected.length > 0) {
-      setJudgerPreselected(preselected);
-    }
   }, [t]);
+
+  const addToJudgerQueue = useCallback((ref: SessionRef) => {
+    setJudgerQueue((prev) => {
+      const next = new Map(prev);
+      next.set(ref.source_path, ref);
+      return next;
+    });
+  }, []);
 
   // When settings change a local provider's root override, propagate it to
   // any open local panels bound to that provider so they re-scan.
@@ -643,8 +648,8 @@ function AppInner() {
                   settings={settings}
                   onSaveSettings={(next) => { void onSaveSettings(next); }}
                   pickerSources={Array.from(sessionCatalog.values())}
-                  preselected={judgerPreselected}
-                  onConsumePreselected={() => setJudgerPreselected(null)}
+                  queue={judgerQueue}
+                  onQueueChange={setJudgerQueue}
                   onJumpToNode={(_sourcePath, _nodeId) => {
                     // V1: deep-linking back to a session node from a rubric
                     // chip is deferred. The intent is to find the matching
@@ -671,17 +676,7 @@ function AppInner() {
               onMetaChange={(snap) => onPanelSnapshot(p.id, snap)}
               onOpenSource={() => setSplashOpen(true)}
               onSettings={() => setSettingsOpen(true)}
-              onJudgeSession={() => {
-                const summary = snapshots[p.id]?.activeSession?.summary;
-                if (!summary) return;
-                const ref: SessionRef = {
-                  session_id: summary.session_id,
-                  source_path: summary.source_path,
-                  title: summary.title ?? null,
-                  cwd: summary.cwd ?? null,
-                };
-                openJudgerPanel([ref]);
-              }}
+              onJudgeSession={() => openJudgerPanel()}
               onJudgeSessionFromList={(s) => {
                 const ref: SessionRef = {
                   session_id: s.session_id,
@@ -689,7 +684,8 @@ function AppInner() {
                   title: s.title ?? null,
                   cwd: s.cwd ?? null,
                 };
-                openJudgerPanel([ref]);
+                addToJudgerQueue(ref);
+                openJudgerPanel();
               }}
               onSessionsLoaded={handleSessionsLoaded}
               onFeedback={() => setFeedbackOpen(true)}

@@ -12,10 +12,12 @@ interface Props {
   /** Snapshot of all currently-open data-source panels — flattened sessions
    *  feed the picker. */
   pickerSources: PickerSource[];
-  /** Set when the user reached the panel via session right-click / toolbar button. */
-  preselected: SessionRef[] | null;
-  /** Clears `preselected` after consumption so revisiting the tab doesn't refill. */
-  onConsumePreselected: () => void;
+  /** Shared queue of sessions chosen for the next evaluation run. Lifted to
+   *  App.tsx so right-click → "judge this session" works whether this panel
+   *  is currently mounted or not, and so toolbar buttons can navigate here
+   *  without auto-adding the active session. */
+  queue: Map<string, SessionRef>;
+  onQueueChange: (next: Map<string, SessionRef>) => void;
   /** Used by RubricView "evidence node id" chips to deep-link back to a session. */
   onJumpToNode: (sourcePath: string, nodeId: string) => void;
 }
@@ -24,17 +26,17 @@ export function JudgerPanel({
   settings,
   onSaveSettings,
   pickerSources,
-  preselected,
-  onConsumePreselected,
+  queue,
+  onQueueChange,
   onJumpToNode,
 }: Props) {
   const { t } = useI18n();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   // Bumped on submit / delete to force JudgmentList to refetch.
   const [refreshKey, setRefreshKey] = useState(0);
-  // Bumped on submit to force StartEvaluationForm to remount with cleared
-  // local state. The form is always visible on the left, so we can't rely
-  // on unmount-on-pane-switch to clear it like the old design did.
+  // Bumped on submit / reset to force StartEvaluationForm to remount with
+  // cleared internal cmd/dims/prompt state. The shared queue is cleared
+  // separately via onQueueChange.
   const [formKey, setFormKey] = useState(0);
 
   function handleCommitted(runIds: string[], agentCmd: string) {
@@ -44,7 +46,7 @@ export function JudgerPanel({
         judger: { ...settings.judger, last_cmd: agentCmd },
       });
     }
-    onConsumePreselected();
+    onQueueChange(new Map());
     setRefreshKey((k) => k + 1);
     setFormKey((k) => k + 1); // clear the form for the next run
     if (runIds.length > 0) {
@@ -53,7 +55,7 @@ export function JudgerPanel({
   }
 
   function handleReset() {
-    onConsumePreselected();
+    onQueueChange(new Map());
     setFormKey((k) => k + 1);
   }
 
@@ -69,7 +71,8 @@ export function JudgerPanel({
           key={formKey}
           sources={pickerSources}
           defaultAgentCmd={settings.judger.last_cmd ?? ""}
-          preselected={preselected ?? undefined}
+          selected={queue}
+          onSelectedChange={onQueueChange}
           onCommitted={handleCommitted}
           onReset={handleReset}
         />
