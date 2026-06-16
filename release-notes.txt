@@ -1,3 +1,7 @@
+v1.8.1
+-------
+- 修复导出 bundle 时 manifest.json 的"已知 skill 清单"漏掉项目级 skill 的问题：之前只列全局 skill 目录（如 ~/.config/opencode/skills），项目内的 .opencode/skills 完全没收。现在会按所导出的会话覆盖到的所有 cwd 取并集，AI 在 events.jsonl 里看到的命中 skill 也都能在 manifest 里查到来源。
+
 v1.8.0
 -------
 - 导出功能重构为统一的分析 bundle：工具栏的"导出当前会话"和 AI 辅助分析对话框现在都产出一个目录，里面有 manifest.json + index.jsonl + analysis-guide.md，以及每个会话的 sessions/<id>/ 子目录（events.jsonl + transcript.md + raw.json）。AI 自分析时可以先扫 index 挑可疑会话再下钻，不必把整份原始 JSON 全塞进上下文。
