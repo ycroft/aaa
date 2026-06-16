@@ -7,14 +7,17 @@
 ## 工程结构
 
 ```
-tools/aaa/
+aaa/
 ├── core/             # tauri-free 业务核心（cargo workspace 成员）
 │   └── src/
-│       ├── model.rs        # 统一数据模型（SessionSummary/SessionNode/MessagePart/TokenUsage/SubAgentSession 等）
-│       ├── providers/      # SessionProvider trait + claude_code / opencode 实现
+│       ├── model.rs        # 统一数据模型（SessionSummary/SessionNode/MessagePart/TokenUsage/SubAgentSession/TpsMetrics 等）
+│       ├── providers/      # SessionProvider trait + claude_code / code_agent_3x / opencode 实现 + 共享的 anthropic_jsonl 解析器
 │       ├── settings.rs     # AppSettings 持久化（~/.config/aaa/settings.json）
-│       ├── remote/         # SSH 远程同步子系统（ssh/mirror/probe/known_hosts）
+│       ├── remote/         # SSH 远程同步子系统（ssh/mirror/probe/known_hosts/incremental）
 │       ├── stats.rs        # 跨 provider 的按需统计（skill 用量聚合等）
+│       ├── skills.rs       # SKILL.md 指纹注册表（前 128 字节做指纹，对齐 user-text 注入识别 skill 调用）
+│       ├── skill_detect.rs # 统一 skill 检测 pipeline（user-text 指纹 + assistant tool_use，case-insensitive）
+│       ├── tps.rs          # tokens-per-second 聚合（per-agent 曲线 + per-session 汇总）
 │       ├── feedback.rs     # 本地 feedback ticket 持久化（~/.config/aaa/tickets.json）
 │       ├── log_buffer.rs   # WARN+ERROR 日志环形缓冲（给 feedback excerpt 用）
 │       ├── log_excerpt.rs  # 日志脱敏/截断
@@ -27,27 +30,29 @@ tools/aaa/
 ├── server/            # aaa-hub 服务端（cargo workspace 成员，Axum + SQLite）
 │   ├── src/
 │   │   ├── routes/          # health / feedback / updates(manifest+artifacts) / admin
-│   │   ├── domain/          # feedback / update 领域模型
+│   │   ├── domain/          # update 领域模型（feedback 领域逻辑直接落在 routes/feedback.rs）
 │   │   └── notify/          # email 通知（lettre SMTP）
 │   ├── admin-ui/            # 管理后台静态页（index.html + admin.js）
 │   ├── migrations/          # SQLite 迁移脚本
-│   └── tests/               # 11 个集成测试
+│   └── tests/               # 11 份集成测试文件
 ├── src-tauri/         # Tauri host
 │   └── src/
 │       ├── commands.rs      # 核心命令 + 远程同步 + 导出 + AI agent 启动
 │       ├── hub_commands.rs  # aaa-hub 相关命令（feedback / update）
 │       └── hub.rs           # HubClient（reqwest 封装，fail-silent 规则）
 ├── src/               # React + TypeScript UI（Vite 8 / React 18）
-│   ├── App.tsx              # 顶层状态机
+│   ├── App.tsx              # 顶层状态机 + I18nProvider 包裹 + 多 tab 工作区
 │   ├── api.ts               # 包装所有 Tauri invoke
 │   ├── model-context.ts     # 模型→上下文窗口静态查找表（正则前缀匹配）
+│   ├── panels.ts            # 多 tab 面板身份键（panelIdentity）+ PanelDescriptor
 │   ├── types.ts             # 与 core/model.rs 对齐的 TS 类型
 │   ├── format.ts            # 路径/数字/时间格式化
+│   ├── i18n/                # 中英文 catalog（zh.ts 为权威源，en.ts 须镜像形状）+ DeepStrings 类型卫戍
 │   ├── hooks/useStatusHint  # 状态栏提示
 │   ├── styles/app.css       # 全局样式
-│   └── components/          # 14 个组件（见下文）
-├── docs/              # 设计文档（aaa-hub 实现方案、更新/反馈服务设计）
-├── scripts/           # 构建/安装/打包脚本（Linux + Windows）
+│   └── components/          # 17 个组件（见下文 · SessionViewer 已是子目录）
+├── docs/              # 设计文档（按 superpowers 工作流，分 plans/ 与 specs/）
+├── scripts/           # 构建/安装/打包脚本（Linux + Windows，含 server/ 子目录）
 ├── vendor/tauri-cache/         # Linux AppImage 打包上游产物
 ├── vendor/tauri-cache-windows/ # Windows MSI/NSIS 打包上游产物
 └── Cargo.toml         # workspace = [src-tauri, core, server, wire]
@@ -57,7 +62,13 @@ tools/aaa/
 
 ### 前端组件一览
 
-`Menubar` · `Toolbar` · `SessionList` · `SessionViewer` · `SettingsDialog` · `ProviderSplash` · `StatusBar` · `AboutDialog` · `AiAnalysisDialog` · `FeedbackDialog` · `FeedbackList` · `RemoteEditor` · `RemoteProgressDialog` · `UpdateBanner`
+按职责分三层：
+
+- **壳层（多 tab 工作区）**：`Menubar` · `Toolbar` · `TabBar` · `StatusBar` · `EmptyWorkspace` · `SessionPanel` · `ProviderSplash` · `UpdateBanner`
+- **业务对话框**：`SettingsDialog` · `AboutDialog` · `AiAnalysisDialog` · `FeedbackDialog` · `FeedbackList` · `RemoteEditor` · `RemoteProgressDialog`
+- **会话查看器子树**：`SessionList` · `SessionViewer/`（`index.tsx` + `parts/`：BashView / DiffView / ReadView / TodoView / Highlight / Metric / CtxBar / PartView / SkillChips / ToolChips / ToolFilterDropdown / Tooltips / AgentSwitcher 等 part 视图与 `edit-detect.ts` / `rich-tools.ts` 工具；`hooks/`：useDropdownDismiss / useMessageSearch / useSkillUsage；`stats.ts` + `viz.ts` 负责图表）
+
+`SessionPanel` 是单个 tab 的壳——一个 panel 对应一个"已打开的 backend 来源"，由 `panels.ts::panelIdentity` 按 (provider, root) 或 (provider, remoteId) 去重。`App.tsx` 内层 `AppInner` 维护 panel 列表，`I18nProvider` 在外层包裹，靠 `src/i18n/` 的 catalog（zh 权威 / en 镜像，DeepStrings 类型卫戍）解析 `t(...)` 文案。
 
 ## 架构与扩展点
 
@@ -66,6 +77,11 @@ tools/aaa/
 核心抽象在 `core/src/providers/mod.rs`：
 
 ```rust
+pub enum RemoteSyncStrategy {
+    Default,                // mirror::sync_files / sync_dir 整树或白名单镜像
+    OpencodeIncremental,    // 远端 sqlite3 行级增量 SELECT，全量 SFTP 兜底
+}
+
 pub trait SessionProvider: Send + Sync {
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
@@ -73,6 +89,9 @@ pub trait SessionProvider: Send + Sync {
     fn is_implemented(&self) -> bool { true }
     fn remote_root_candidates(&self) -> Vec<&'static str> { Vec::new() }
     fn remote_sync_files(&self) -> Option<Vec<&'static str>> { None }
+    fn remote_sync_strategy(&self) -> RemoteSyncStrategy { RemoteSyncStrategy::Default }
+    fn skill_usage(&self, _detail: &SessionDetail) -> Vec<SkillUsage> { Vec::new() }
+    fn skill_roots(&self, _cwd: Option<&Path>) -> Vec<PathBuf> { Vec::new() }
     fn list_sessions(&self, root: &PathBuf) -> Result<Vec<SessionSummary>>;
     fn load_session(&self, source_path: &PathBuf) -> Result<SessionDetail>;
 }
@@ -80,6 +99,9 @@ pub trait SessionProvider: Send + Sync {
 
 - `remote_root_candidates()` — 远程主机上的候选日志路径（`{home}` 占位符会被替换为远程 `$HOME`）
 - `remote_sync_files()` — 选择性同步文件列表（如 SQLite 仅需 db 文件本身）；`None` 表示整树镜像
+- `remote_sync_strategy()` — 同步算法选择：默认走 `mirror::*`，opencode 选 `OpencodeIncremental` 跑 `remote/incremental.rs` 的行级增量
+- `skill_usage()` — 把已加载的 `SessionDetail` 折成 `Vec<SkillUsage>` 的聚合视图（按 `core/src/skill_detect.rs` 统一 pipeline 处理）
+- `skill_roots()` — 探测 `<root>/<id>/SKILL.md` 指纹的根目录（如 `~/.claude/skills`、`<cwd>/.opencode/skills`），由 `core/src/skills.rs` 注册到指纹表
 
 新增 backend 的步骤分两档，按是否与现有 provider 同协议选：
 
@@ -93,9 +115,12 @@ pub trait SessionProvider: Send + Sync {
 
 **B. 协议不同（自定义存储，例如 opencode 的 SQLite）：**
 
-1. 在 `core/src/providers/<id>.rs` 完整实现 `SessionProvider`，把原生日志翻译成 `SessionNode + MessagePart + TokenUsage`，正确填充 `cumulative_context_tokens`
-2. 若需结构化 skill 检测，override `fn skill_usage()` 自定义提取逻辑（参考 `anthropic_jsonl::collect_skill_usage` 的两遍扫描思路）
-3. 若远程同步只需特定文件（不是整树镜像），override `fn remote_sync_files()` 返回白名单（参考 opencode：`vec!["opencode.db", "opencode.db-wal", "opencode.db-shm"]`）
+1. 在 `core/src/providers/<id>.rs` 完整实现 `SessionProvider`，把原生日志翻译成 `SessionNode + MessagePart + TokenUsage`，正确填充 `cumulative_context_tokens` 与 `generation_duration_ms`（后者驱动 TPS 计算）
+2. 若需结构化 skill 检测，override `fn skill_usage()` 自定义提取逻辑（参考 `anthropic_jsonl::collect_skill_usage` 的两遍扫描思路），需要 SKILL.md 指纹识别时 override `fn skill_roots()` 把候选根目录吐给 `core/src/skills.rs`
+3. 远程同步按需求三档选其一：
+   - 整树镜像（默认） — 啥都不 override
+   - 白名单文件镜像 — override `fn remote_sync_files()` 返回名单（参考 opencode：`vec!["opencode.db", "opencode.db-wal", "opencode.db-shm"]`）
+   - 行级增量 — override `fn remote_sync_strategy()` 返回 `RemoteSyncStrategy::OpencodeIncremental`，并在 `core/src/remote/incremental.rs` 那一类模块里实现增量算法；失败自动回落到 `remote_sync_files()`/全树镜像
 4. 在 `providers/mod.rs::all()` 注册
 5. （可选）AI preset 同 A 第 3 步，smoke test 同 A 第 4 步
 6. 前端通常零改动；唯一需要前端配合的场景：display_name 需要本地化后缀，加到 `src/format.ts::providerLabel`（参考 opencode 的 nga-compat 后缀）
@@ -106,16 +131,19 @@ pub trait SessionProvider: Send + Sync {
 
 | 类型 | 作用 |
 |------|------|
-| `SessionSummary` | 列表项：title / cwd / branch / 起止时间 / 消息数 / token 累计 / `peak_context_tokens` |
+| `SessionSummary` | 列表项：title / cwd / branch / 起止时间 / 消息数 / token 累计 / `peak_context_tokens` / `used_skills`（已检测到的 skill id 列表） |
 | `SessionNode` | 时间线节点：kind（user/assistant/system/tool_result/sidechain/meta）+ `parts` + `usage` + `cumulative_context_tokens` |
 | `MessagePart` | 节点内片段：Text / Thinking / ToolUse / ToolResult / Image / Attachment / Note |
-| `TokenUsage` | input / output / cache_creation / cache_read / service_tier，`context_window()` 把前 4 项加起来 |
-| `SessionDetail` | 完整会话：summary + nodes + subagents |
-| `SubAgentSession` | 子代理会话：agent_id / agent_type / kind / parent_tool_use_id / summary + nodes |
+| `TokenUsage` | input / output / cache_creation / cache_read / service_tier / `generation_duration_ms`（assistant 生成耗时，TPS 用），`context_window()` 把 input + 两个 cache 桶加起来 |
+| `SessionDetail` | 完整会话：summary + nodes + subagents + `tps_session`（可选）+ `tps_per_agent`（含主代理 + Normal 子代理） |
+| `SubAgentSession` | 子代理会话：agent_id / agent_type / kind / `type_ordinal`（同 type 内 1-based 序号，UI 标 "Explore@2"）/ `description` / parent_tool_use_id / summary + nodes |
 | `SubAgentKind` | 子代理类型：Normal（真实子代理）/ AsideQuestion（/aside 侧链）/ Compact（自动压缩快照） |
+| `TpsMetrics` | 一组 assistant turn 的 TPS 聚合：`tps_mean`（per-turn 算术平均，不是 total/total）/ `tps_median` / `sample_count` / `excluded_count` 等 |
+| `TpsSeriesPoint` | per-agent 曲线点：`tps` 永远非零（不合格的 turn 走 forward-fill，并标 `interpolated = true`） |
+| `AgentTps` | 单个 agent 的 metrics + series 打包，键入 `SessionDetail.tps_per_agent`，主代理用常量 `"<main>"` 作 key |
 | `ProviderInfo` | 序列化的 provider 描述符（id / display_name / default_root / root_exists / is_implemented） |
 
-UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个累计最大值字段——所有 provider 都需要正确填充它。
+UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个累计最大值字段——所有 provider 都需要正确填充它。TPS 曲线由 `core/src/tps.rs` 在 `load_session` 时计算填进 `tps_per_agent` / `tps_session`，provider 只需把 `generation_duration_ms` 填好。
 
 ### Tauri 命令面
 
@@ -141,7 +169,7 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 | `submit_feedback` | 提交 feedback ticket（可选附件 + 日志 excerpt），本地也留存一份 |
 | `get_feedback_status` | 查询 ticket 远端状态 |
 | `list_local_tickets` | 列出本地已提交的 ticket |
-| `check_update` | 预留（前端直接调用 @tauri-apps/plugin-updater） |
+| `check_update` | 占位实现（始终返回 `Ok(None)`），未通过 `api.ts` 暴露；前端实际走 `@tauri-apps/plugin-updater` 直连 |
 | `refresh_hub` | 设置变更后重新绑定 HubClient |
 
 ### Settings 结构（`core/src/settings.rs`）
@@ -152,9 +180,9 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 |------|------|
 | `provider_roots` | `HashMap<String, String>` — provider 目录覆盖 |
 | `remotes` | `Vec<RemoteHost>` — SSH 远程主机列表 |
-| `ai` | `AiSettings` — mode（None/Agent/Api）+ agents 列表 + prompt 模板 |
-| `ui` | `UiSettings` — theme / preview_chars / auto_expand_threshold_tokens |
-| `hub` | `HubSettings` — base_url + device_id（空 base_url = 未配置，不发请求） |
+| `ai` | `AiSettings` — `mode`（None/Agent/Api）+ `selected_agent` + `agents: Vec<AgentConfig>`（preset 由 `ensure_canonical_presets` 迁移补齐）+ `prompt_templates: Vec<PromptTemplate>`（每条带 `TemplateScope::Single`/`All`） |
+| `ui` | `UiSettings` — `theme` / `preview_chars` / `auto_expand_threshold_tokens` / `language`（"auto" 跟随 `navigator.language`，"zh" / "en" 显式覆盖） |
+| `hub` | `HubSettings` — `base_url` + `device_id`（空 base_url = 未配置，不发请求） |
 
 ### 远程同步子系统（`core/src/remote/`）
 
@@ -162,7 +190,8 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 
 - `ssh.rs` — SSH 连接、SFTP 会话、TOFU host-key 验证
 - `mirror.rs` — 增量目录镜像（mtime 对比）或选择性文件同步
-- `probe.rs` — 探测远程主机上各 provider 的日志目录
+- `probe.rs` — 探测远程主机上各 provider 的日志目录（opencode 探测会要求远端 sqlite3 ≥ 3.33.0）
+- `incremental.rs` — opencode 行级增量同步：远端跑 sqlite3 SELECT，本地 cache db 应用结果，watermark 持久化在 `aaa_sync_state` 表；任意失败回落到 `mirror::sync_files` 全量 SFTP
 - `known_hosts.rs` — TOFU host-key 存储
 - 抽象 `RemoteFs` trait 便于测试 mock
 
@@ -183,7 +212,7 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 |----|------|---------|------|
 | `claude-code` | 已实现 | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` | 逐行 JSONL 解析，按 `type` 字段映射节点；含子代理（`subagents/agent-<id>.jsonl`） |
 | `code-agent-3x` | 已实现 | `~/.cac/projects/<encoded-cwd>/<sessionId>.jsonl` | Claude Code 兼容客户端，与 `claude-code` 共享 `core/src/providers/anthropic_jsonl.rs` 解析模块 |
-| `opencode` | 已实现 | `~/.local/share/opencode/opencode.db`（可在设置里覆盖目录或直接指向 db 文件） | 读 SQLite `session/message/part` 三张表；`source_path` 编码为 `<db>#<session_id>`；tool 调用合并为单个 ToolUse 节点；`remote_sync_files()` 返回选择性文件列表 |
+| `opencode` | 已实现 | `~/.local/share/opencode/opencode.db`（可在设置里覆盖目录或直接指向 db 文件） | 读 SQLite `session/message/part` 三张表；`source_path` 编码为 `<db>#<session_id>`；tool 调用合并为单个 ToolUse 节点；远程同步默认走 `RemoteSyncStrategy::OpencodeIncremental`（远端 sqlite3 行级增量 SELECT），失败回落到 `remote_sync_files()` 白名单全量 SFTP（`opencode.db` + `-wal` + `-shm`） |
 
 ## 模型上下文窗口
 
@@ -201,10 +230,10 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 
 | 文件 | 字段 |
 |------|------|
-| `tools/aaa/package.json` | `"version"` |
-| `tools/aaa/src-tauri/tauri.conf.json` | `"version"` |
-| `tools/aaa/src-tauri/Cargo.toml` | `[package].version` |
-| `tools/aaa/core/Cargo.toml` | `[package].version` |
+| `aaa/package.json` | `"version"` |
+| `aaa/src-tauri/tauri.conf.json` | `"version"` |
+| `aaa/src-tauri/Cargo.toml` | `[package].version` |
+| `aaa/core/Cargo.toml` | `[package].version` |
 
 > 注：`server/Cargo.toml` 版本号独立管理，不参与同步。
 
@@ -212,7 +241,7 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 
 | 文件 | 要做的事 |
 |------|---------|
-| `tools/aaa/release-notes.txt` | 在文件**顶部**追加新版本块：先写 `vX.Y.Z` 标题行，再用一行短横线分隔，最后用 `- ` 列出本次提交的关键改动。该文件由 `src-tauri/src/commands.rs` 通过 `include_str!("../../release-notes.txt")` 在编译期内联到二进制，About 对话框直接展示其内容。 |
+| `aaa/release-notes.txt` | 在文件**顶部**追加新版本块：先写 `vX.Y.Z` 标题行，再用一行短横线分隔，最后用 `- ` 列出本次提交的关键改动。该文件由 `src-tauri/src/commands.rs` 通过 `include_str!("../../release-notes.txt")` 在编译期内联到二进制，About 对话框直接展示其内容。 |
 
 > **Release notes 写功能、不写代码。** `release-notes.txt` 与 GitHub Release body 都是面向用户的——同事关心"这版能多干什么、修了什么看得见的毛病"，不关心改了哪个 `.rs` 文件、抽出了哪个 trait、删掉了哪个内部函数。每条 bullet 应当从用户视角描述行为变化（看得到什么、原来错在哪、现在怎样），文件路径 / 类型名 / 函数名 / 重构动作一律不出现。改动如果纯属内部重构、用户完全无感，那就不必单列一条；只在它解锁了未来某个能力时简短带一句。这条规则同时适用于中文 `release-notes.txt` 和翻译后的 GitHub Release body。
 
@@ -264,7 +293,7 @@ tar -xJf /tmp/node22.tar.xz -C ~/.local/node --strip-components=1
 ### Linux · 构建 release
 
 ```bash
-cd tools/aaa
+cd aaa
 PATH=$HOME/.local/node/bin:$PATH ./scripts/build-release.sh
 ```
 
@@ -319,7 +348,7 @@ PATH=$HOME/.local/node/bin:$PATH ./scripts/build-release.sh
 PowerShell：
 
 ```powershell
-cd tools\aaa
+cd aaa
 .\scripts\build-release.ps1            # 出 .msi + NSIS .exe + 裸 aaa.exe
 .\scripts\build-release.ps1 -NoBundle  # 只出裸 aaa.exe，迭代用
 ```
