@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import type {
-  AgentConfig,
   AppSettings,
-  PromptTemplate,
   ProviderInfo,
   RemoteHostInfo,
   RemoteHostInput,
-  TemplateScope,
 } from "../types";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
@@ -24,20 +21,15 @@ interface Props {
   onRemotesChanged?: () => void;
 }
 
-type Tab = "backends" | "remotes" | "ai" | "display" | "hub" | "feedback";
+type Tab = "backends" | "remotes" | "display" | "hub" | "feedback";
 
 const TAB_KEYS: Record<Tab, TKey> = {
   backends: "settings.tab.backends",
   remotes: "settings.tab.remotes",
-  ai: "settings.tab.ai",
   display: "settings.tab.display",
   hub: "settings.tab.hub",
   feedback: "settings.tab.feedback",
 };
-
-function genId() {
-  return `custom-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
 
 export function SettingsDialog({
   open,
@@ -53,7 +45,6 @@ export function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [remotes, setRemotes] = useState<RemoteHostInfo[]>([]);
   const [editing, setEditing] = useState<RemoteHostInfo | "new" | null>(null);
-  const [detected, setDetected] = useState<Record<string, boolean>>({});
 
   useEffect(() => { if (open) setDraft(settings); }, [open, settings]);
   useEffect(() => {
@@ -61,24 +52,6 @@ export function SettingsDialog({
       void api.listRemotes().then(setRemotes).catch(() => setRemotes([]));
     }
   }, [open, tab, editing]);
-
-  // Auto-detect preset agent commands when AI tab is open in agent mode.
-  useEffect(() => {
-    if (!open || tab !== "ai" || draft.ai.mode !== "agent") return;
-    const presets = draft.ai.agents.filter((a) => a.is_preset);
-    // Extract first word (the actual command name) from cmd_template.
-    void Promise.all(
-      presets.map(async (a) => {
-        const cmd = a.cmd_template.split(/\s/)[0];
-        const exists = await api.checkCommandExists(cmd).catch(() => false);
-        return [a.id, exists] as const;
-      }),
-    ).then((results) => {
-      const map: Record<string, boolean> = {};
-      for (const [id, exists] of results) map[id] = exists;
-      setDetected(map);
-    });
-  }, [open, tab, draft.ai.mode, draft.ai.agents]);
 
   if (!open) return null;
 
@@ -89,9 +62,6 @@ export function SettingsDialog({
     const picked = await openDialog({ directory: true, multiple: false });
     if (typeof picked === "string") setRoot(id, picked);
   };
-
-  const setAi = (patch: Partial<AppSettings["ai"]>) =>
-    setDraft((d) => ({ ...d, ai: { ...d.ai, ...patch } }));
 
   const setUi = (patch: Partial<AppSettings["ui"]>) =>
     setDraft((d) => ({ ...d, ui: { ...d.ui, ...patch } }));
@@ -114,24 +84,6 @@ export function SettingsDialog({
     await refreshRemotes();
   }
 
-  const updateAgent = (id: string, patch: Partial<AgentConfig>) =>
-    setAi({ agents: draft.ai.agents.map((a) => (a.id === id ? { ...a, ...patch } : a)) });
-
-  const removeAgent = (id: string) =>
-    setAi({ agents: draft.ai.agents.filter((a) => a.id !== id) });
-
-  const addAgent = () =>
-    setAi({ agents: [...draft.ai.agents, { id: genId(), name: "", cmd_template: "", is_preset: false }] });
-
-  const updateTemplate = (id: string, patch: Partial<PromptTemplate>) =>
-    setAi({ prompt_templates: draft.ai.prompt_templates.map((tpl) => (tpl.id === id ? { ...tpl, ...patch } : tpl)) });
-
-  const removeTemplate = (id: string) =>
-    setAi({ prompt_templates: draft.ai.prompt_templates.filter((tpl) => tpl.id !== id) });
-
-  const addTemplate = () =>
-    setAi({ prompt_templates: [...draft.ai.prompt_templates, { id: genId(), name: "", content: "", scope: "single" as TemplateScope }] });
-
   const inEditor = tab === "remotes" && editing !== null;
 
   return (
@@ -142,7 +94,7 @@ export function SettingsDialog({
           <button className="close" onClick={onClose} data-hint={t("settings.close_hint")}>×</button>
         </div>
         <div style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border)" }}>
-          {(["backends", "remotes", "ai", "display", "hub", "feedback"] as Tab[]).map((tk) => (
+          {(["backends", "remotes", "display", "hub", "feedback"] as Tab[]).map((tk) => (
             <button
               key={tk}
               className={"btn" + (tab === tk ? " primary" : "")}
@@ -214,103 +166,6 @@ export function SettingsDialog({
             onCancel={() => setEditing(null)}
             onSave={saveRemote}
           />
-        )}
-
-        {tab === "ai" && (
-          <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.ai.mode_heading")}</h3>
-            <div className="field">
-              <label>{t("settings.ai.mode")}</label>
-              <select value={draft.ai.mode} onChange={(e) => setAi({ mode: e.target.value as AppSettings["ai"]["mode"] })}>
-                <option value="none">{t("settings.ai.mode_none")}</option>
-                <option value="agent">{t("settings.ai.mode_agent")}</option>
-                <option value="api" disabled>{t("settings.ai.mode_api")}</option>
-              </select>
-            </div>
-
-            {draft.ai.mode === "agent" && (
-              <>
-                <div className="help" style={{ marginBottom: 8 }}>{t("settings.ai.agent_help")}</div>
-                {draft.ai.agents.map((agent) => {
-                  const isSelected = draft.ai.selected_agent === agent.id;
-                  const missing = agent.is_preset && detected[agent.id] === false;
-                  return (
-                    <div key={agent.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "8px 0", borderBottom: "1px solid var(--border-1)", opacity: missing ? 0.45 : 1 }}>
-                      <input
-                        type="radio"
-                        name="sel-agent"
-                        checked={isSelected}
-                        disabled={missing}
-                        onChange={() => setAi({ selected_agent: agent.id })}
-                        style={{ marginTop: 4, flexShrink: 0 }}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        {agent.is_preset ? (
-                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                            {agent.name}
-                            {missing && <span className="help" style={{ marginLeft: 6, color: "var(--text-2)" }}>{t("settings.ai.agent_missing")}</span>}
-                          </div>
-                        ) : (
-                          <input
-                            value={agent.name}
-                            onChange={(e) => updateAgent(agent.id, { name: e.target.value })}
-                            placeholder={t("settings.ai.agent_name_placeholder")}
-                            style={{ marginBottom: 4, width: "100%", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit" }}
-                            spellCheck={false}
-                          />
-                        )}
-                        <input
-                          value={agent.cmd_template}
-                          onChange={(e) => updateAgent(agent.id, { cmd_template: e.target.value })}
-                          placeholder={t("settings.ai.agent_cmd_placeholder")}
-                          style={{ width: "100%", padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontFamily: "monospace", fontSize: 12 }}
-                          spellCheck={false}
-                        />
-                      </div>
-                      {!agent.is_preset && (
-                        <button className="btn" onClick={() => removeAgent(agent.id)} style={{ flexShrink: 0 }}>×</button>
-                      )}
-                    </div>
-                  );
-                })}
-                <button className="btn" onClick={addAgent} style={{ marginTop: 8 }}>{t("settings.ai.add_custom_agent")}</button>
-              </>
-            )}
-
-            <h3 style={{ margin: "16px 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.ai.template_heading")}</h3>
-            <div className="help" style={{ marginBottom: 8 }}>{t("settings.ai.template_help")}</div>
-            {draft.ai.prompt_templates.map((tpl) => (
-              <div key={tpl.id} style={{ marginBottom: 10, padding: "8px 0", borderBottom: "1px solid var(--border-1)" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 4, alignItems: "center" }}>
-                  <input
-                    value={tpl.name}
-                    onChange={(e) => updateTemplate(tpl.id, { name: e.target.value })}
-                    placeholder={t("settings.ai.template_name_placeholder")}
-                    style={{ flex: 1, padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit" }}
-                    spellCheck={false}
-                  />
-                  <select
-                    value={tpl.scope}
-                    onChange={(e) => updateTemplate(tpl.id, { scope: e.target.value as TemplateScope })}
-                    style={{ padding: "4px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", fontSize: 12, fontFamily: "inherit", cursor: "pointer", flexShrink: 0 }}
-                  >
-                    <option value="single">{t("settings.ai.template_scope_single")}</option>
-                    <option value="all">{t("settings.ai.template_scope_all")}</option>
-                  </select>
-                  <button className="btn" onClick={() => removeTemplate(tpl.id)} style={{ flexShrink: 0, padding: "4px 8px" }}>×</button>
-                </div>
-                <textarea
-                  value={tpl.content}
-                  onChange={(e) => updateTemplate(tpl.id, { content: e.target.value })}
-                  placeholder={t("settings.ai.template_content_placeholder")}
-                  rows={3}
-                  style={{ width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 12, padding: "6px 8px", background: "var(--bg-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", color: "var(--text-1)", boxSizing: "border-box" }}
-                  spellCheck={false}
-                />
-              </div>
-            ))}
-            <button className="btn" onClick={addTemplate}>{t("settings.ai.add_template")}</button>
-          </div>
         )}
 
         {tab === "display" && (
