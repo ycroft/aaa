@@ -123,7 +123,7 @@ function PersonalSourcesTab({
   return (
     <div className="splash-personal">
       <h3 className="splash-section-heading">{t("splash.local")}</h3>
-      <div className="provider-grid">
+      <div className="provider-list">
         {providers.map((p) => {
           const tag = !p.is_implemented
             ? <span className="tag todo">{t("splash.tag_coming_soon")}</span>
@@ -134,19 +134,21 @@ function PersonalSourcesTab({
           return (
             <div
               key={p.id}
-              className={`provider-card${canPick ? "" : " disabled"}`}
+              className={`provider-row${canPick ? "" : " disabled"}`}
               data-hint={canPick
                 ? t("splash.use_provider_hint", { name: providerLabel(p, t), root: p.default_root ?? t("splash.no_path") })
                 : t("splash.not_implemented_hint", { name: providerLabel(p, t) })}
               onClick={() => canPick && onPick(p)}
             >
-              <div className="pname">
-                <span>{providerLabel(p, t)}</span>
-                {tag}
+              <div className="provider-row-info">
+                <div className="pname">
+                  <span>{providerLabel(p, t)}</span>
+                  {tag}
+                </div>
+                <div className="root">{shortPath(p.default_root, 120)}</div>
               </div>
-              <div className="root">{shortPath(p.default_root, 96)}</div>
               {canPick && (
-                <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                <div className="provider-row-actions">
                   <button
                     className="btn primary"
                     onClick={(e) => { e.stopPropagation(); onPick(p); }}

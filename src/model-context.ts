@@ -27,6 +27,7 @@ const TABLE: Array<[RegExp, number]> = [
   // future models with different windows can be pinned without reshuffling.
   [/^glm-5\.1/i,               200_000],
   [/^glm-5/i,                  200_000],
+  [/^cac-glm-4\.7-cj/i,        128_000],
   [/^glm-4\.7/i,               200_000],
   // DeepSeek V4 ships with a 1M-token context window by default.
   [/^deepseek-v4/i,            1_000_000],

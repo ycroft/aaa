@@ -1549,7 +1549,57 @@ mark.search-hit {
 }
 .splash h1 { margin: 0 0 4px; font-size: 22px; }
 .splash p.lead { margin: 0 0 20px; color: var(--text-2); }
-.provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.provider-list { display: flex; flex-direction: column; gap: 6px; }
+.provider-row {
+  padding: 8px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: default;
+  transition: border-color 0.12s, background 0.12s;
+}
+.provider-row:hover:not(.disabled) {
+  border-color: var(--accent);
+  background: var(--bg-3);
+}
+.provider-row.disabled { opacity: 0.55; }
+.provider-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.provider-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.provider-row .pname {
+  font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px;
+}
+.provider-row .pname .tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--text-3);
+}
+.provider-row .pname .tag.ok { color: var(--result); background: rgba(136, 225, 163, 0.10); }
+.provider-row .pname .tag.miss { color: var(--warn); background: rgba(255, 184, 107, 0.10); }
+.provider-row .pname .tag.todo { color: var(--text-3); }
+.provider-row .root {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  word-break: break-all;
+  user-select: text; cursor: text;
+}
 .provider-card {
   padding: 16px;
   border: 1px solid var(--border-2);
@@ -2306,7 +2356,8 @@ mark.search-hit {
   padding: 2px 6px;
   margin: -10px -10px 12px;
 }
-:root[data-theme="win98"] .provider-card {
+:root[data-theme="win98"] .provider-card,
+:root[data-theme="win98"] .provider-row {
   background: var(--bg-1);
   border: 0;
   box-shadow:
@@ -2315,13 +2366,18 @@ mark.search-hit {
     inset 2px 2px 0 var(--bevel-mid),
     inset -2px -2px 0 var(--bevel-dark);
 }
-:root[data-theme="win98"] .provider-card:hover:not(.disabled) {
+:root[data-theme="win98"] .provider-card:hover:not(.disabled),
+:root[data-theme="win98"] .provider-row:hover:not(.disabled) {
   background: var(--bg-1);
 }
 :root[data-theme="win98"] .provider-card .pname .tag,
 :root[data-theme="win98"] .provider-card .pname .tag.ok,
 :root[data-theme="win98"] .provider-card .pname .tag.miss,
-:root[data-theme="win98"] .provider-card .pname .tag.todo {
+:root[data-theme="win98"] .provider-card .pname .tag.todo,
+:root[data-theme="win98"] .provider-row .pname .tag,
+:root[data-theme="win98"] .provider-row .pname .tag.ok,
+:root[data-theme="win98"] .provider-row .pname .tag.miss,
+:root[data-theme="win98"] .provider-row .pname .tag.todo {
   background: var(--bg-1);
   color: var(--text-1);
   box-shadow:
