@@ -297,14 +297,9 @@ export const en: Catalog = {
   },
   judger: {
     tab_title: "Judger",
-    empty: {
-      title: "Judger",
-      body: "Pick a session to start evaluating, or open one from the history on the left.",
-      start_button: "+ Start evaluation",
-    },
     list: {
       header: "History",
-      new_button: "+ Start evaluation",
+      refresh: "Refresh",
       empty: "No evaluations yet",
       status_pending: "Running",
       status_done: "Done",
@@ -320,7 +315,7 @@ export const en: Catalog = {
       prompt_hint: "Auto-generated from selected dimensions. Override here for this run only.",
       dimensions_label: "Dimensions",
       submit: "Start",
-      cancel: "Cancel",
+      reset: "Reset",
       error_no_sessions: "Pick at least one session",
       error_no_cmd: "Enter an agent command",
     },
@@ -334,6 +329,7 @@ export const en: Catalog = {
       delete_confirm: "Delete this evaluation? The workdir will be removed.",
       pending_hint: "Evaluation is still running or no result.json was produced.",
       failed_hint: "result.json exists but failed to parse. Check the Raw tab.",
+      select_hint: "Select an evaluation above to view its details.",
     },
     dim: {
       context: "Context management",

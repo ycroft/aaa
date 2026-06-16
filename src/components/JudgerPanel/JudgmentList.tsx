@@ -6,12 +6,11 @@ import type { JudgmentListItem } from "../../types";
 interface Props {
   selectedRunId: string | null;
   onSelect: (runId: string) => void;
-  onStartNew: () => void;
   /** Bumped whenever an external action (start / delete) requires a refetch. */
   refreshKey: number;
 }
 
-export function JudgmentList({ selectedRunId, onSelect, onStartNew, refreshKey }: Props) {
+export function JudgmentList({ selectedRunId, onSelect, refreshKey }: Props) {
   const { t } = useI18n();
   const [items, setItems] = useState<JudgmentListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,14 +29,24 @@ export function JudgmentList({ selectedRunId, onSelect, onStartNew, refreshKey }
     }
   }, []);
 
-  useEffect(() => { refetch(); }, [refetch, refreshKey]);
+  useEffect(() => {
+    void refetch();
+  }, [refetch, refreshKey]);
 
   return (
-    <aside className="judger-list">
-      <button className="new" onClick={onStartNew}>
-        {t("judger.list.new_button")}
-      </button>
-      <div className="header">{t("judger.list.header")}</div>
+    <div className="judger-list">
+      <div className="header">
+        <span>{t("judger.list.header")}</span>
+        <button
+          type="button"
+          className="refresh"
+          title={t("judger.list.refresh")}
+          onClick={() => void refetch()}
+          disabled={loading}
+        >
+          ↻
+        </button>
+      </div>
       <div className="items">
         {loading && <div className="muted">…</div>}
         {error && <div className="error">{error}</div>}
@@ -47,6 +56,7 @@ export function JudgmentList({ selectedRunId, onSelect, onStartNew, refreshKey }
         {items.map((it) => (
           <button
             key={it.meta.run_id}
+            type="button"
             className={`row ${selectedRunId === it.meta.run_id ? "active" : ""}`}
             onClick={() => onSelect(it.meta.run_id)}
           >
@@ -58,11 +68,13 @@ export function JudgmentList({ selectedRunId, onSelect, onStartNew, refreshKey }
                 {t(`judger.list.status_${it.status}` as const)}
               </span>
               <span className="provider">{it.meta.provider_id}</span>
-              <span className="ts">{it.meta.started_at.slice(0, 16).replace("T", " ")}</span>
+              <span className="ts">
+                {it.meta.started_at.slice(0, 16).replace("T", " ")}
+              </span>
             </div>
           </button>
         ))}
       </div>
-    </aside>
+    </div>
   );
 }

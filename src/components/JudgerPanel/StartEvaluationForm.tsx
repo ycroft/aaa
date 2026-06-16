@@ -12,7 +12,11 @@ interface Props {
   /** Receives the list of started run-ids AND the agent_cmd the user submitted,
    *  so the parent can persist `last_cmd` without a side-channel. */
   onCommitted: (runIds: string[], agentCmd: string) => void;
-  onCancel: () => void;
+  /** Clear the form back to defaults. The parent typically force-remounts
+   *  the form via key=, but exposing the action lets the user trigger it
+   *  explicitly (e.g. when they came in via right-click and want to start
+   *  fresh instead). */
+  onReset: () => void;
 }
 
 export function StartEvaluationForm({
@@ -20,7 +24,7 @@ export function StartEvaluationForm({
   defaultAgentCmd,
   preselected,
   onCommitted,
-  onCancel,
+  onReset,
 }: Props) {
   const { t } = useI18n();
   const initialSelection = useMemo(() => {
@@ -131,8 +135,8 @@ export function StartEvaluationForm({
       {error && <div className="error">{error}</div>}
 
       <div className="actions">
-        <button onClick={onCancel} disabled={submitting}>
-          {t("judger.start.cancel")}
+        <button onClick={onReset} disabled={submitting}>
+          {t("judger.start.reset")}
         </button>
         <button onClick={submit} disabled={submitting} className="primary">
           {t("judger.start.submit")}

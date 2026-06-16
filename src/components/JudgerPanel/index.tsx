@@ -20,11 +20,6 @@ interface Props {
   onJumpToNode: (sourcePath: string, nodeId: string) => void;
 }
 
-type RightPane =
-  | { kind: "empty" }
-  | { kind: "form" }
-  | { kind: "detail"; runId: string };
-
 export function JudgerPanel({
   settings,
   onSaveSettings,
@@ -34,79 +29,70 @@ export function JudgerPanel({
   onJumpToNode,
 }: Props) {
   const { t } = useI18n();
-  const [pane, setPane] = useState<RightPane>(
-    preselected && preselected.length > 0 ? { kind: "form" } : { kind: "empty" },
-  );
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  // Bumped on submit / delete to force JudgmentList to refetch.
   const [refreshKey, setRefreshKey] = useState(0);
+  // Bumped on submit to force StartEvaluationForm to remount with cleared
+  // local state. The form is always visible on the left, so we can't rely
+  // on unmount-on-pane-switch to clear it like the old design did.
+  const [formKey, setFormKey] = useState(0);
 
-  function startNew() {
-    setPane({ kind: "form" });
-  }
-
-  function onFormCommitted(runIds: string[]) {
+  function handleCommitted(runIds: string[], agentCmd: string) {
+    if (agentCmd.trim()) {
+      onSaveSettings({
+        ...settings,
+        judger: { ...settings.judger, last_cmd: agentCmd },
+      });
+    }
     onConsumePreselected();
     setRefreshKey((k) => k + 1);
+    setFormKey((k) => k + 1); // clear the form for the next run
     if (runIds.length > 0) {
-      setPane({ kind: "detail", runId: runIds[0] });
-    } else {
-      setPane({ kind: "empty" });
+      setSelectedRunId(runIds[0]);
     }
   }
 
-  function onCancel() {
+  function handleReset() {
     onConsumePreselected();
-    setPane({ kind: "empty" });
+    setFormKey((k) => k + 1);
   }
 
-  function onDeleted() {
+  function handleDeleted() {
     setRefreshKey((k) => k + 1);
-    setPane({ kind: "empty" });
+    setSelectedRunId(null);
   }
 
   return (
     <div className="judger-panel">
-      <JudgmentList
-        selectedRunId={pane.kind === "detail" ? pane.runId : null}
-        onSelect={(runId) => setPane({ kind: "detail", runId })}
-        onStartNew={startNew}
-        refreshKey={refreshKey}
-      />
-      <main className="judger-right">
-        {pane.kind === "empty" && (
-          <div className="judger-empty">
-            <h2>{t("judger.empty.title")}</h2>
-            <p>{t("judger.empty.body")}</p>
-            <button className="primary" onClick={startNew}>
-              {t("judger.empty.start_button")}
-            </button>
-          </div>
-        )}
-        {pane.kind === "form" && (
-          <StartEvaluationForm
-            sources={pickerSources}
-            defaultAgentCmd={settings.judger.last_cmd ?? ""}
-            preselected={preselected ?? undefined}
-            onCommitted={(ids, agentCmd) => {
-              // Persist last_cmd straight from the form's submission, no
-              // module-level state needed — onCommitted now carries it.
-              if (agentCmd.trim()) {
-                onSaveSettings({
-                  ...settings,
-                  judger: { ...settings.judger, last_cmd: agentCmd },
-                });
-              }
-              onFormCommitted(ids);
-            }}
-            onCancel={onCancel}
-          />
-        )}
-        {pane.kind === "detail" && (
-          <JudgmentDetail
-            runId={pane.runId}
-            onDeleted={onDeleted}
-            onJumpToNode={onJumpToNode}
-          />
-        )}
+      <aside className="judger-form-pane">
+        <StartEvaluationForm
+          key={formKey}
+          sources={pickerSources}
+          defaultAgentCmd={settings.judger.last_cmd ?? ""}
+          preselected={preselected ?? undefined}
+          onCommitted={handleCommitted}
+          onReset={handleReset}
+        />
+      </aside>
+      <main className="judger-right-pane">
+        <JudgmentList
+          selectedRunId={selectedRunId}
+          onSelect={setSelectedRunId}
+          refreshKey={refreshKey}
+        />
+        <section className="judger-detail-host">
+          {selectedRunId ? (
+            <JudgmentDetail
+              runId={selectedRunId}
+              onDeleted={handleDeleted}
+              onJumpToNode={onJumpToNode}
+            />
+          ) : (
+            <div className="judger-detail-empty muted">
+              {t("judger.detail.select_hint")}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );

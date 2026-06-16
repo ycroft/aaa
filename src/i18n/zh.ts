@@ -295,14 +295,9 @@ export const zh = {
   },
   judger: {
     tab_title: "评估器",
-    empty: {
-      title: "评估器",
-      body: "选一个会话开始评估，或从左侧历史中查看已完成的评估。",
-      start_button: "+ 启动新评估",
-    },
     list: {
       header: "评估历史",
-      new_button: "+ 启动新评估",
+      refresh: "刷新",
       empty: "暂无评估",
       status_pending: "运行中",
       status_done: "已完成",
@@ -318,7 +313,7 @@ export const zh = {
       prompt_hint: "默认按勾选维度自动生成。可手改本次提示词。",
       dimensions_label: "评估维度",
       submit: "启动",
-      cancel: "取消",
+      reset: "清空",
       error_no_sessions: "请至少选择一个会话",
       error_no_cmd: "请填写 agent 命令",
     },
@@ -332,6 +327,7 @@ export const zh = {
       delete_confirm: "确定删除此评估？workdir 会被一同删除。",
       pending_hint: "评估尚在运行 / 未产生 result.json。可点开工作目录查看。",
       failed_hint: "result.json 存在但无法解析。请查看「原始 result.json」子页。",
+      select_hint: "从上方选择一项查看详情。",
     },
     dim: {
       context: "上下文管理",
