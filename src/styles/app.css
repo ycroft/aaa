@@ -2925,6 +2925,7 @@ mark.search-hit {
   line-height: 1.45;
 }
 .judger-start-form input[type="text"],
+.judger-start-form select,
 .judger-start-form textarea {
   width: 100%;
   box-sizing: border-box;

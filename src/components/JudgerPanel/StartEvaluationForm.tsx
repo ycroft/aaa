@@ -5,6 +5,13 @@ import type { Dimension, SessionRef, StartJudgmentArgs } from "../../types";
 import { SessionPicker, type PickerSource } from "./SessionPicker";
 import { ALL_DIMENSIONS } from "./dims";
 
+const CMD_PRESETS = [
+  "nga --prompt",
+  "claude --dangerously-skip-permissions",
+  "opencode --prompt",
+] as const;
+const CUSTOM_MODE = "__custom__";
+
 interface Props {
   sources: PickerSource[];
   defaultAgentCmd: string;
@@ -31,7 +38,13 @@ export function StartEvaluationForm({
   onReset,
 }: Props) {
   const { t } = useI18n();
-  const [agentCmd, setAgentCmd] = useState(defaultAgentCmd);
+  const initialMode = (CMD_PRESETS as readonly string[]).includes(defaultAgentCmd)
+    ? defaultAgentCmd
+    : CUSTOM_MODE;
+  const initialCustom = initialMode === CUSTOM_MODE ? defaultAgentCmd : "";
+  const [cmdMode, setCmdMode] = useState<string>(initialMode);
+  const [customCmd, setCustomCmd] = useState(initialCustom);
+  const agentCmd = cmdMode === CUSTOM_MODE ? customCmd : cmdMode;
   const [dims, setDims] = useState<Set<Dimension>>(new Set(ALL_DIMENSIONS));
   const [promptOverride, setPromptOverride] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -105,12 +118,25 @@ export function StartEvaluationForm({
 
       <section>
         <label>{t("judger.start.agent_cmd_label")}</label>
-        <input
-          type="text"
-          value={agentCmd}
-          onChange={(e) => setAgentCmd(e.target.value)}
-          placeholder="claude --dangerously-skip-permissions"
-        />
+        <select
+          value={cmdMode}
+          onChange={(e) => setCmdMode(e.target.value)}
+        >
+          {CMD_PRESETS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+          <option value={CUSTOM_MODE}>{t("judger.start.agent_cmd_custom")}</option>
+        </select>
+        {cmdMode === CUSTOM_MODE && (
+          <input
+            type="text"
+            value={customCmd}
+            onChange={(e) => setCustomCmd(e.target.value)}
+            placeholder={t("judger.start.agent_cmd_custom_placeholder")}
+          />
+        )}
         <div className="hint">{t("judger.start.agent_cmd_hint")}</div>
       </section>
 
