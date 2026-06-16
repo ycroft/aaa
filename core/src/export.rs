@@ -120,7 +120,7 @@ pub fn build_bundle(inputs: &BundleInputs, target_dir: &Path) -> anyhow::Result<
         )?;
     }
 
-    fs::write(bundle_dir.join("analysis-guide.md"), "")?;
+    fs::write(bundle_dir.join("analysis-guide.md"), render_analysis_guide(&manifest, &session_anomalies))?;
 
     Ok(BundlePaths {
         bundle_dir,
@@ -426,5 +426,56 @@ fn truncate_lines(s: &str, head: usize, tail: usize) -> String {
     let mut out = lines[..head].join("\n");
     out.push_str(&format!("\n[+{} more lines]\n", omitted));
     out.push_str(&lines[lines.len() - tail..].join("\n"));
+    out
+}
+
+fn render_analysis_guide(manifest: &Manifest, anomalies: &[(String, Vec<String>)]) -> String {
+    let mut hi = String::new();
+    for (sid, items) in anomalies {
+        if items.is_empty() { continue; }
+        hi.push_str(&format!("- `{}`: {}\n", sid, items.join(", ")));
+    }
+    if hi.is_empty() { hi.push_str("- (none flagged)\n"); }
+
+    let mut out = String::new();
+    out.push_str("# AAA Session Export — Analysis Guide\n");
+    out.push_str("\n");
+    out.push_str("> This bundle is the canonical input for AI-driven analysis of AAA sessions.\n");
+    out.push_str(&format!(
+        "> aaa version: `{}` · schema_version: `{}` · provider: `{}` · scope: `{}` · session_count: {}\n",
+        manifest.aaa_version, manifest.schema_version,
+        manifest.provider, manifest.scope, manifest.session_count
+    ));
+    out.push_str("\n");
+    out.push_str("## Bundle layout\n");
+    out.push_str("\n");
+    out.push_str("```\n");
+    out.push_str("manifest.json              head + known_skills inventory\n");
+    out.push_str("index.jsonl                one row per session (peak_ctx, used_skills, anomalies)\n");
+    out.push_str("analysis-guide.md          this file\n");
+    out.push_str("sessions/<id>/\n");
+    out.push_str("    events.jsonl           one row per node (skill_id, ctx_after, tool, retry_of)\n");
+    out.push_str("    transcript.md          narrative drill-down with truncated tool_result bodies\n");
+    out.push_str("    raw.json               full SessionDetail; fidelity escape hatch\n");
+    out.push_str("```\n");
+    out.push_str("\n");
+    out.push_str("## Reading order\n");
+    out.push_str("\n");
+    out.push_str("1. Skim `index.jsonl` to pick interesting sessions (peak_ctx_pct, anomalies, skill counts).\n");
+    out.push_str("2. Open `sessions/<id>/events.jsonl` for grep / per-node analysis.\n");
+    out.push_str("3. Use `transcript.md` only when prose context is needed.\n");
+    out.push_str("4. `raw.json` is for fidelity / regression — avoid as first read.\n");
+    out.push_str("\n");
+    out.push_str("## Pre-computed signals (don't re-derive)\n");
+    out.push_str("\n");
+    out.push_str("- `events.jsonl.skill_id` — already filled by the canonical `core::skill_detect` pipeline.\n");
+    out.push_str("- `events.jsonl.ctx_jump_pct` — running pct against previous node's `cumulative_context_tokens`.\n");
+    out.push_str("- `events.jsonl.retry_of` — same `(tool, input)` predecessor node id.\n");
+    out.push_str("- `index.jsonl.anomalies` — strings like `ctx_jump@<node>`, `tool_retry_loop@<node>`.\n");
+    out.push_str("- `manifest.json.known_skills` — every SKILL.md the provider can see; use this for \"should this skill have triggered?\" reasoning.\n");
+    out.push_str("\n");
+    out.push_str("## Sessions with flagged anomalies\n");
+    out.push_str("\n");
+    out.push_str(&hi);
     out
 }

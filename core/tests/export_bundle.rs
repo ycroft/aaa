@@ -126,3 +126,21 @@ fn transcript_md_contains_per_node_headers() {
     assert!(content.starts_with("# "));
     assert!(content.contains("\n## "));
 }
+
+#[test]
+fn analysis_guide_renders_with_injected_facts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let inputs = BundleInputs {
+        provider_id: "claude-code".into(),
+        source_paths: vec![],
+        root: None,
+        scope: ExportScope::All,
+    };
+    let out = build_bundle(&inputs, tmp.path()).unwrap();
+    let s = std::fs::read_to_string(out.bundle_dir.join("analysis-guide.md")).unwrap();
+    assert!(s.contains("# AAA Session Export — Analysis Guide"));
+    assert!(s.contains("## Bundle layout"));
+    assert!(s.contains("## Reading order"));
+    assert!(s.contains("provider: `claude-code`"));
+    assert!(s.contains("session_count: 0"));
+}
