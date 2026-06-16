@@ -18,3 +18,24 @@ fn build_bundle_creates_target_directory_and_manifest() {
     assert!(out.bundle_dir.join("analysis-guide.md").is_file());
     assert!(out.bundle_dir.join("sessions").is_dir());
 }
+
+#[test]
+fn manifest_contains_version_provider_and_scope() {
+    let tmp = tempfile::tempdir().unwrap();
+    let inputs = BundleInputs {
+        provider_id: "claude-code".into(),
+        source_paths: vec![],
+        root: Some(PathBuf::from("/tmp/example")),
+        scope: ExportScope::Single,
+    };
+    let out = build_bundle(&inputs, tmp.path()).unwrap();
+    let m: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(out.bundle_dir.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(m["provider"], "claude-code");
+    assert_eq!(m["scope"], "single");
+    assert_eq!(m["schema_version"], 1);
+    assert!(m["aaa_version"].as_str().is_some());
+    assert!(m["export_ts"].as_str().is_some());
+    assert!(m["known_skills"].is_array());
+}
