@@ -16,8 +16,8 @@ export function JudgmentList({ selectedRunId, onSelect, refreshKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refetch = useCallback(async () => {
-    setLoading(true);
+  const refetch = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const list = await api.judgerList();
@@ -25,13 +25,23 @@ export function JudgmentList({ selectedRunId, onSelect, refreshKey }: Props) {
     } catch (e) {
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refetch();
   }, [refetch, refreshKey]);
+
+  // Background poll: while any judgment is still pending, silently refetch
+  // every 5s so the user sees status flip to done/failed without clicking ↻.
+  // When everything is settled the interval shuts off — no idle work.
+  const hasPending = items.some((it) => it.status === "pending");
+  useEffect(() => {
+    if (!hasPending) return;
+    const id = setInterval(() => void refetch(true), 5000);
+    return () => clearInterval(id);
+  }, [hasPending, refetch]);
 
   return (
     <div className="judger-list">
@@ -41,7 +51,7 @@ export function JudgmentList({ selectedRunId, onSelect, refreshKey }: Props) {
           type="button"
           className="refresh"
           title={t("judger.list.refresh")}
-          onClick={() => void refetch()}
+          onClick={() => void refetch(false)}
           disabled={loading}
         >
           ↻

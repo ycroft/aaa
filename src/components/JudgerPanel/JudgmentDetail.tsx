@@ -29,6 +29,16 @@ export function JudgmentDetail({ runId, onDeleted, onJumpToNode }: Props) {
 
   useEffect(() => { refetch(); }, [refetch]);
 
+  // Background poll: while this run is still pending, silently refetch every
+  // 5s so the rubric / status appears as soon as the agent writes result.json.
+  // Once status becomes done/failed the interval shuts off.
+  const isPending = detail?.status === "pending";
+  useEffect(() => {
+    if (!isPending) return;
+    const id = setInterval(() => void refetch(), 5000);
+    return () => clearInterval(id);
+  }, [isPending, refetch]);
+
   async function onDelete() {
     if (!confirm(t("judger.detail.delete_confirm"))) return;
     await api.judgerDelete(runId);
