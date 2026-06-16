@@ -133,12 +133,45 @@ pub async fn probe_sqlite3(fs: &mut dyn RemoteFs) -> bool {
             if ok {
                 info!("remote sqlite3 detected: {}", s.trim());
             } else {
-                warn!("remote sqlite3 probe stdout did not look like a version: {:?}", s);
+                warn!(
+                    "remote sqlite3 probe: command exited 0 but stdout did not look like a version: {:?} \
+                     ({} bytes) — falling back to full SFTP",
+                    s,
+                    out.len()
+                );
             }
             ok
         }
         Err(e) => {
-            info!("remote sqlite3 probe failed (will fall back to full SFTP): {}", e);
+            // Spell out the failure mode so the log makes the diagnosis obvious
+            // without the reader having to mentally decode `EXEC:code=N:...`:
+            //   code=127 → command not found (sqlite3 not installed / not in PATH)
+            //   code=1   → `command -v` found nothing or sqlite3 returned 1
+            //   code=-1  → no exit status (server didn't send one — see ssh.rs)
+            //   code=-2  → killed by signal
+            match &e {
+                RemoteError::Exec { code, stderr } => {
+                    let hint = match *code {
+                        127 => "sqlite3 binary not found in remote PATH",
+                        1 => "sqlite3 not in PATH or `command -v` found nothing",
+                        -1 => "remote SSH channel closed without sending exit-status \
+                               (likely non-OpenSSH server, ForceCommand wrapper, or process killed without SIGCHLD)",
+                        -2 => "remote process killed by signal",
+                        _ => "unexpected exit code",
+                    };
+                    info!(
+                        "remote sqlite3 probe failed (will fall back to full SFTP): \
+                         code={} hint={} stderr={}",
+                        code, hint, stderr
+                    );
+                }
+                other => {
+                    info!(
+                        "remote sqlite3 probe failed (will fall back to full SFTP): {}",
+                        other
+                    );
+                }
+            }
             false
         }
     }

@@ -264,12 +264,24 @@ impl RemoteFs for RemoteSession {
             .await
             .map_err(|e| RemoteError::Sftp(e.to_string()))?;
 
+        // Track which channel events we observed. Some non-OpenSSH servers
+        // (Dropbear, certain bastion-host wrappers) deliver `ExitStatus` AFTER
+        // `Eof`, so we must not break on Eof — only on Close, or when wait()
+        // returns None. ExitSignal is captured as a distinct outcome so a
+        // signal-killed remote process is reported as "killed by SIGxxx"
+        // rather than the misleading "no exit status".
         let mut stdout: Vec<u8> = Vec::new();
         let mut stderr: Vec<u8> = Vec::new();
         let mut exit_code: Option<i32> = None;
+        let mut exit_signal: Option<(String, bool, String)> = None; // (signal, core_dumped, msg)
+        let mut saw_data = false;
+        let mut saw_eof = false;
+        let mut saw_close = false;
+        let mut other_msg_count: u32 = 0;
         while let Some(msg) = channel.wait().await {
             match msg {
                 ChannelMsg::Data { ref data } => {
+                    saw_data = true;
                     if (stdout.len() as u64) + (data.len() as u64) > max_stdout {
                         warn!(
                             "ssh exec stdout exceeded cap {} bytes for cmd: {}",
@@ -283,15 +295,33 @@ impl RemoteFs for RemoteSession {
                     stdout.extend_from_slice(data);
                 }
                 ChannelMsg::ExtendedData { ref data, .. } => stderr.extend_from_slice(data),
-                ChannelMsg::ExitStatus { exit_status } => exit_code = Some(exit_status as i32),
-                ChannelMsg::Eof | ChannelMsg::Close => break,
-                _ => {}
+                ChannelMsg::ExitStatus { exit_status } => {
+                    exit_code = Some(exit_status as i32);
+                }
+                ChannelMsg::ExitSignal {
+                    ref signal_name,
+                    core_dumped,
+                    ref error_message,
+                    ..
+                } => {
+                    exit_signal = Some((
+                        format!("{:?}", signal_name),
+                        core_dumped,
+                        error_message.clone(),
+                    ));
+                }
+                ChannelMsg::Eof => saw_eof = true,
+                ChannelMsg::Close => {
+                    saw_close = true;
+                    break;
+                }
+                _ => other_msg_count += 1,
             }
         }
         let stderr_str = String::from_utf8_lossy(&stderr).into_owned();
-        match exit_code {
-            Some(0) => Ok(stdout),
-            Some(code) => {
+        match (exit_code, exit_signal) {
+            (Some(0), _) => Ok(stdout),
+            (Some(code), _) => {
                 warn!(
                     "ssh exec exit {}: {} stderr={}",
                     code, cmd, stderr_str
@@ -301,10 +331,51 @@ impl RemoteFs for RemoteSession {
                     stderr: stderr_str,
                 })
             }
-            None => Err(RemoteError::Exec {
-                code: -1,
-                stderr: format!("no exit status from remote; stderr={}", stderr_str),
-            }),
+            (None, Some((sig, core, msg))) => {
+                warn!(
+                    "ssh exec killed by signal {} (core_dumped={}, msg={:?}): cmd={} \
+                     stdout_bytes={} stderr={}",
+                    sig,
+                    core,
+                    msg,
+                    cmd,
+                    stdout.len(),
+                    stderr_str
+                );
+                Err(RemoteError::Exec {
+                    code: -2,
+                    stderr: format!(
+                        "killed by signal {} (core_dumped={}, msg={:?}); stderr={}",
+                        sig, core, msg, stderr_str
+                    ),
+                })
+            }
+            (None, None) => {
+                warn!(
+                    "ssh exec ended with no exit status and no exit signal: cmd={} \
+                     stdout_bytes={} stderr_bytes={} saw_data={} saw_eof={} saw_close={} \
+                     other_msgs={}",
+                    cmd,
+                    stdout.len(),
+                    stderr.len(),
+                    saw_data,
+                    saw_eof,
+                    saw_close,
+                    other_msg_count
+                );
+                Err(RemoteError::Exec {
+                    code: -1,
+                    stderr: format!(
+                        "no exit status from remote (saw_data={} saw_eof={} saw_close={} other_msgs={} stdout_bytes={}); stderr={}",
+                        saw_data,
+                        saw_eof,
+                        saw_close,
+                        other_msg_count,
+                        stdout.len(),
+                        stderr_str
+                    ),
+                })
+            }
         }
     }
 }
