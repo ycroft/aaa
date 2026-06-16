@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 
 import { api } from "../api";
 import type {
@@ -17,6 +18,8 @@ import type {
   SessionDetail,
   SessionFilter,
   SessionSummary,
+  SkillScanDonePayload,
+  SkillScanProgressPayload,
 } from "../types";
 import { EMPTY_FILTER } from "../types";
 import { shortPath } from "../format";
@@ -113,6 +116,13 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
   const [error, setError] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Background skill-scan progress. `null` outside a scan; `{k, n}` while one
+  // is in flight. Drives the status bar and resets on cancel/refresh.
+  const [skillScanProgress, setSkillScanProgress] =
+    useState<{ k: number; n: number } | null>(null);
+  // The scan id the listeners should currently honour. Refs (not state) so
+  // updating it doesn't restart the listen-effect on each refresh.
+  const skillScanIdRef = useRef<string | null>(null);
 
   // ---- Refresh sessions whenever the bound root changes (provider override,
   //      remote re-sync, etc.). Clearing activePath/activeSession lets the
@@ -120,11 +130,43 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
   const refreshSessions = useCallback(async () => {
     setBusy(true);
     setStatus(t("status.scanning", { root: backend.root }));
+    // Cancel any in-flight skill scan from a previous root before kicking
+    // off the new one — events for the old scan are filtered out by the
+    // listener via the ref, but we still want the worker to stop early.
+    const previousScanId = skillScanIdRef.current;
+    skillScanIdRef.current = null;
+    setSkillScanProgress(null);
+    if (previousScanId) {
+      void api.cancelSkillScan(previousScanId).catch(() => {});
+    }
     try {
       const list = await api.listSessions(backend.provider.id, backend.root);
       setSessions(list);
       setStatus(t("status.loaded_sessions", { count: list.length }));
       setError(null);
+
+      // Kick off the async skill-scan pass once the list is in. Empty list
+      // = nothing to scan; bail without spawning.
+      if (list.length > 0) {
+        const scanId = crypto.randomUUID();
+        skillScanIdRef.current = scanId;
+        setSkillScanProgress({ k: 0, n: list.length });
+        void api
+          .startSkillScan(
+            backend.provider.id,
+            scanId,
+            list.map((s) => s.source_path),
+          )
+          .catch((e) => {
+            // Worker spawn failed — clear progress so the status bar
+            // doesn't get stuck on 0/N. The list itself is fine.
+            if (skillScanIdRef.current === scanId) {
+              skillScanIdRef.current = null;
+              setSkillScanProgress(null);
+            }
+            console.warn("startSkillScan failed:", e);
+          });
+      }
     } catch (e: unknown) {
       setError(String(e));
       setSessions([]);
@@ -139,6 +181,55 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
     setActiveSession(null);
     void refreshSessions();
   }, [refreshSessions]);
+
+  // ---- Skill-scan event subscription. Mounted once for the panel's lifetime;
+  //      `skillScanIdRef.current` selects which scan's events get applied.
+  //      Cleanup cancels any still-running scan when the panel unmounts. ----
+  useEffect(() => {
+    let unlistenProgress: (() => void) | null = null;
+    let unlistenDone: (() => void) | null = null;
+    let cancelled = false;
+    void (async () => {
+      const p = await listen<SkillScanProgressPayload>(
+        "skill-scan-progress",
+        (evt) => {
+          if (evt.payload.scan_id !== skillScanIdRef.current) return;
+          const { source_path, used_skills, k, n } = evt.payload;
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.source_path === source_path ? { ...s, used_skills } : s,
+            ),
+          );
+          setSkillScanProgress({ k, n });
+        },
+      );
+      const d = await listen<SkillScanDonePayload>(
+        "skill-scan-done",
+        (evt) => {
+          if (evt.payload.scan_id !== skillScanIdRef.current) return;
+          skillScanIdRef.current = null;
+          setSkillScanProgress(null);
+        },
+      );
+      if (cancelled) {
+        p();
+        d();
+      } else {
+        unlistenProgress = p;
+        unlistenDone = d;
+      }
+    })();
+    return () => {
+      cancelled = true;
+      unlistenProgress?.();
+      unlistenDone?.();
+      const id = skillScanIdRef.current;
+      if (id) {
+        skillScanIdRef.current = null;
+        void api.cancelSkillScan(id).catch(() => {});
+      }
+    };
+  }, []);
 
   const onSelectSession = useCallback(
     async (s: SessionSummary) => {
@@ -214,6 +305,18 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
 
   const canExport = !!activeSession && !exporting;
 
+  // While a background skill scan is in flight, override the status string
+  // with the (k/n) counter so the user sees the panel is still working.
+  const displayStatus = useMemo(() => {
+    if (skillScanProgress && skillScanProgress.n > 0) {
+      return t("status.scanning_skills", {
+        k: skillScanProgress.k,
+        n: skillScanProgress.n,
+      });
+    }
+    return status;
+  }, [skillScanProgress, status, t]);
+
   // Push every meaningful state change up so the App can reflect this panel's
   // status in the (single) status bar and decide whether menu items / the AI
   // dialog should be enabled.
@@ -222,7 +325,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
       active: backend,
       sessionCount: sessions.length,
       counts,
-      status,
+      status: displayStatus,
       error,
       busy,
       loadingSession,
@@ -230,7 +333,7 @@ export const SessionPanel = forwardRef<SessionPanelHandle, Props>(function Sessi
       canExport,
       expandAll,
     }),
-    [backend, sessions.length, counts, status, error, busy, loadingSession, activeSession, canExport, expandAll],
+    [backend, sessions.length, counts, displayStatus, error, busy, loadingSession, activeSession, canExport, expandAll],
   );
 
   useEffect(() => {

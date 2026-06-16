@@ -32,6 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(commands::RemoteTasks::default())
+        .manage(commands::SkillScanTasks::default())
         .manage(log_buf)
         .manage(hub_client)
         .invoke_handler(tauri::generate_handler![
@@ -49,6 +50,8 @@ pub fn run() {
             commands::remote_probe,
             commands::remote_open,
             commands::remote_cancel,
+            commands::start_skill_scan,
+            commands::cancel_skill_scan,
             commands::export_sessions,
             commands::check_command_exists,
             commands::launch_agent,

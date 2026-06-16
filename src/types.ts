@@ -325,6 +325,25 @@ export interface RemoteProgressEvent {
   progress: SyncProgress;
 }
 
+/// Event payload emitted as `skill-scan-progress` while the background
+/// pass fills `summary.used_skills` after `list_sessions` returns.
+export interface SkillScanProgressPayload {
+  scan_id: string;
+  source_path: string;
+  used_skills: string[];
+  /** 1-based index of the session that just finished. */
+  k: number;
+  /** Total session count for this scan. */
+  n: number;
+}
+
+/// Event payload emitted as `skill-scan-done` when the background pass has
+/// finished iterating (or was cancelled).
+export interface SkillScanDonePayload {
+  scan_id: string;
+  total: number;
+}
+
 // ---- UI-only filter model (not mirrored on the Rust side). ----
 
 export type TimeRangePreset = "all" | "24h" | "1w" | "1m" | "custom";

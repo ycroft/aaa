@@ -79,6 +79,7 @@ export const en: Catalog = {
     ready: "Ready.",
     scanning: "Scanning {root}…",
     loaded_sessions: "Loaded {count} session(s).",
+    scanning_skills: "Scanning skills in background… {k}/{n}",
     scan_failed: "Failed to scan directory.",
     loaded_session: "Loaded: {title}",
     load_session_failed: "Failed to load session.",
