@@ -13,7 +13,7 @@ use crate::remote::RemoteHost;
 pub struct AppSettings {
     pub provider_roots: std::collections::HashMap<String, String>,
     pub remotes: Vec<RemoteHost>,
-    pub ai: AiSettings,
+    pub judger: JudgerSettings,
     pub ui: UiSettings,
     pub hub: HubSettings,
 }
@@ -30,101 +30,12 @@ pub struct HubSettings {
     pub device_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum AiMode {
-    #[default]
-    None,
-    Agent,
-    Api,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum TemplateScope {
-    Single,
-    #[default]
-    All,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentConfig {
-    pub id: String,
-    pub name: String,
-    pub cmd_template: String,
-    pub is_preset: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptTemplate {
-    pub id: String,
-    pub name: String,
-    pub content: String,
-    pub scope: TemplateScope,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Per-user persistence for the Judger feature. `last_cmd` is the agent
+/// command line the user submitted last so the form pre-fills it next time.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
-pub struct AiSettings {
-    pub mode: AiMode,
-    pub selected_agent: Option<String>,
-    pub agents: Vec<AgentConfig>,
-    pub prompt_templates: Vec<PromptTemplate>,
-}
-
-impl Default for AiSettings {
-    fn default() -> Self {
-        Self {
-            mode: AiMode::None,
-            selected_agent: None,
-            agents: vec![
-                AgentConfig {
-                    id: "claude".into(),
-                    name: "Claude Code".into(),
-                    cmd_template: "claude --dangerously-skip-permissions".into(),
-                    is_preset: true,
-                },
-                AgentConfig {
-                    id: "opencode".into(),
-                    name: "opencode".into(),
-                    cmd_template: "opencode".into(),
-                    is_preset: true,
-                },
-                AgentConfig {
-                    id: "nga".into(),
-                    name: "nga".into(),
-                    cmd_template: "nga".into(),
-                    is_preset: true,
-                },
-                AgentConfig {
-                    id: "cac".into(),
-                    name: "Code Agent 3.x".into(),
-                    cmd_template: "cac".into(),
-                    is_preset: true,
-                },
-            ],
-            prompt_templates: vec![
-                PromptTemplate {
-                    id: "analyze-single".into(),
-                    name: "深度分析单个会话".into(),
-                    content: "你是一位专业的 AI coding agent 会话分析师，精通 token 用量分析与上下文窗口管理。\n\n请深度分析提供的会话 JSON 文件，重点关注：\n1. Token 用量走势与峰值节点\n2. 上下文窗口占用率变化规律\n3. 高消耗操作（大文件读取、长工具结果等）\n4. 给出降低 token 消耗的具体建议".into(),
-                    scope: TemplateScope::Single,
-                },
-                PromptTemplate {
-                    id: "find-explosion".into(),
-                    name: "上下文爆炸定位".into(),
-                    content: "你是一位专业的 AI coding agent 会话分析师。\n\n请分析提供的会话 JSON 文件，定位导致上下文窗口激增的关键节点：\n1. 找出 cumulative_context_tokens 出现跳跃性增长的消息节点\n2. 分析该节点的内容，解释为何导致上下文激增\n3. 给出避免此类上下文爆炸的建议".into(),
-                    scope: TemplateScope::Single,
-                },
-                PromptTemplate {
-                    id: "cross-session-cost".into(),
-                    name: "跨会话成本分析".into(),
-                    content: "你是一位专业的 AI coding agent 使用成本分析师。\n\n请分析提供目录中的所有会话 JSON 文件，进行跨会话成本对比：\n1. 统计各会话的 token 消耗（input/output/cache）\n2. 识别高消耗会话的共同特征\n3. 找出成本异常的会话并分析原因\n4. 给出优化整体使用成本的建议".into(),
-                    scope: TemplateScope::All,
-                },
-            ],
-        }
-    }
+pub struct JudgerSettings {
+    pub last_cmd: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,9 +78,7 @@ pub fn load() -> Result<AppSettings> {
     match serde_json::from_str::<AppSettings>(&raw) {
         Ok(mut parsed) => {
             let dev_id_changed = ensure_device_id(&mut parsed);
-            let presets_upgraded = upgrade_preset_agents(&mut parsed);
-            let presets_added = ensure_canonical_presets(&mut parsed);
-            if dev_id_changed || presets_upgraded || presets_added {
+            if dev_id_changed {
                 let _ = save(&parsed);
             }
             Ok(parsed)
@@ -181,51 +90,6 @@ pub fn load() -> Result<AppSettings> {
             Ok(s)
         }
     }
-}
-
-/// One-shot migration for preset agents whose stored values were wrong in an
-/// earlier version. Only rewrites a field when its stored value matches the
-/// known-bad default — anything the user customised stays untouched.
-/// Returns true if any field changed (caller persists).
-fn upgrade_preset_agents(s: &mut AppSettings) -> bool {
-    let mut changed = false;
-    for a in s.ai.agents.iter_mut().filter(|a| a.is_preset) {
-        if a.id == "nga" {
-            // <=0.11.1 shipped nga with cmd_template "opencode" and name
-            // "NGA (opencode)". The actual binary is `nga`.
-            if a.cmd_template == "opencode" {
-                a.cmd_template = "nga".into();
-                changed = true;
-            }
-            if a.name == "NGA (opencode)" {
-                a.name = "nga".into();
-                changed = true;
-            }
-        }
-    }
-    changed
-}
-
-/// Inject any canonical preset agents that are missing from the user's
-/// stored settings. Old installs upgrading to a newer build don't get the
-/// new preset by default — `AiSettings::default()` only fires for fresh
-/// installs. This walks the canonical id list and pushes whatever's
-/// missing, copying the canonical record from `AiSettings::default()`.
-/// Returns true if anything changed (caller persists).
-fn ensure_canonical_presets(s: &mut AppSettings) -> bool {
-    let canonical = AiSettings::default().agents;
-    let mut changed = false;
-    for canon in canonical {
-        if !canon.is_preset {
-            continue;
-        }
-        let exists = s.ai.agents.iter().any(|a| a.id == canon.id);
-        if !exists {
-            s.ai.agents.push(canon);
-            changed = true;
-        }
-    }
-    changed
 }
 
 /// Returns true if a new id was generated (caller may want to persist).
@@ -260,31 +124,30 @@ mod tests {
 
     #[test]
     fn missing_remotes_field_defaults_to_empty() {
-        let json = r#"{"provider_roots":{},"ai":{},"ui":{"theme":"light","preview_chars":220,"auto_expand_threshold_tokens":0}}"#;
+        let json = r#"{"provider_roots":{},"ui":{"theme":"light","preview_chars":220,"auto_expand_threshold_tokens":0}}"#;
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert!(parsed.remotes.is_empty());
     }
 
     #[test]
-    fn ensure_canonical_presets_injects_missing_cac() {
-        let mut s = AppSettings::default();
-        s.ai.agents.retain(|a| a.id != "cac");
-        assert!(!s.ai.agents.iter().any(|a| a.id == "cac"));
-
-        let changed = ensure_canonical_presets(&mut s);
-        assert!(changed, "should report changes when injecting cac");
-        let cac = s.ai.agents.iter().find(|a| a.id == "cac").expect("cac added");
-        assert_eq!(cac.name, "Code Agent 3.x");
-        assert_eq!(cac.cmd_template, "cac");
-        assert!(cac.is_preset);
+    fn legacy_ai_field_is_silently_dropped() {
+        let legacy = r#"{
+            "provider_roots": {},
+            "remotes": [],
+            "ai": {"mode": "agent", "selected_agent": "claude"},
+            "ui": {},
+            "hub": {}
+        }"#;
+        let s: AppSettings = serde_json::from_str(legacy).unwrap();
+        assert_eq!(s.judger.last_cmd, None);
     }
 
     #[test]
-    fn ensure_canonical_presets_idempotent_when_all_present() {
+    fn judger_last_cmd_persists() {
         let mut s = AppSettings::default();
-        let before = s.ai.agents.len();
-        let changed = ensure_canonical_presets(&mut s);
-        assert!(!changed);
-        assert_eq!(s.ai.agents.len(), before);
+        s.judger.last_cmd = Some("claude --skip".into());
+        let json = serde_json::to_string(&s).unwrap();
+        let back: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.judger.last_cmd.as_deref(), Some("claude --skip"));
     }
 }
