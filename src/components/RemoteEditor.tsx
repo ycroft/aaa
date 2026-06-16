@@ -110,7 +110,6 @@ export function RemoteEditor({ initial, providers, onCancel, onSave }: Props) {
         <input
           value={draft.user}
           onChange={(e) => patch({ user: e.target.value })}
-          placeholder={t("remote_editor.user_placeholder")}
         />
       </div>
       <div className="field">
