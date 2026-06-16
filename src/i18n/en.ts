@@ -239,7 +239,6 @@ export const en: Catalog = {
     host_port: "Host / Port",
     host_placeholder: "10.0.0.5",
     user: "User",
-    user_placeholder: "root",
     auth: "Auth",
     auth_password: "Password",
     auth_private_key: "Private key",

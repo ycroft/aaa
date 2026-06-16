@@ -237,7 +237,6 @@ export const zh = {
     host_port: "主机 / 端口",
     host_placeholder: "10.0.0.5",
     user: "用户名",
-    user_placeholder: "root",
     auth: "认证方式",
     auth_password: "密码",
     auth_private_key: "私钥",
