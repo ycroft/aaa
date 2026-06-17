@@ -3355,6 +3355,11 @@ mark.search-hit {
   color: var(--text-1);
   white-space: pre-wrap;
   word-break: break-word;
+  /* Opt back into text selection — body has `user-select: none` globally so
+     prompt / raw output would otherwise be unselectable. */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 .judgment-detail .body ul.files {
   margin: 0;
