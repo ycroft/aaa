@@ -3490,3 +3490,176 @@ mark.search-hit {
   background: var(--bg-hover);
   color: var(--text-1);
 }
+
+/* ================================================================
+   Feedback panel — global singleton tab
+   Layout: form-left (~420px) | history-list right
+   ================================================================ */
+.feedback-panel-host {
+  background: var(--bg-0);
+}
+.feedback-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+.feedback-form-pane {
+  flex: 0 0 420px;
+  min-width: 360px;
+  max-width: 480px;
+  border-right: 1px solid var(--border-1);
+  background: var(--bg-1);
+  overflow: hidden auto;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  gap: 12px;
+}
+.feedback-form-pane h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: 0.02em;
+}
+.feedback-form-pane section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.feedback-form-pane section > label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.feedback-form-pane input[type="text"],
+.feedback-form-pane input[type="email"],
+.feedback-form-pane input[type="url"],
+.feedback-form-pane select,
+.feedback-form-pane textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--bg-0);
+  color: var(--text-1);
+  border: 1px solid var(--border-1);
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.feedback-form-pane textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.feedback-offline-hint {
+  font-size: 12px;
+  padding: 8px 10px;
+  background: var(--bg-warn, #fff3cd);
+  color: var(--text-warn, #664d03);
+  border: 1px solid var(--border-warn, #ffe69c);
+  border-radius: 3px;
+}
+.feedback-auto-attach {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.feedback-auto-attach label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+.feedback-error {
+  font-size: 12px;
+  color: var(--text-err, #a33);
+  padding: 4px 0;
+}
+.feedback-ok {
+  font-size: 12px;
+  color: var(--text-ok, #0a7);
+  padding: 4px 0;
+}
+.feedback-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.feedback-list-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+}
+.feedback-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-1);
+}
+.feedback-list-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.feedback-list-offline {
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--bg-1);
+}
+.feedback-list-empty {
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 16px;
+}
+.feedback-list-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+}
+.feedback-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.feedback-list-table th,
+.feedback-list-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-1);
+  vertical-align: top;
+}
+.feedback-list-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-1);
+  color: var(--text-2);
+  font-weight: 600;
+  z-index: 1;
+}
+.feedback-list-table td {
+  color: var(--text-1);
+}
+.feedback-list-table td.status-known {
+  color: var(--text-ok, #0a7);
+}
+.feedback-list-table td.status-unknown {
+  color: var(--text-2);
+}
+.feedback-list-table td:nth-child(3) {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

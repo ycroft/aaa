@@ -14,7 +14,7 @@ import type {
 import { Menubar, type MenuDef } from "./components/Menubar";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { FeedbackDialog } from "./components/FeedbackDialog";
+import { FeedbackPanel } from "./components/FeedbackPanel";
 import { AboutDialog } from "./components/AboutDialog";
 import { ProviderSplash } from "./components/ProviderSplash";
 import { RemoteProgressDialog } from "./components/RemoteProgressDialog";
@@ -33,6 +33,8 @@ import { JudgerPanel } from "./components/JudgerPanel";
 import { useStatusHint } from "./hooks/useStatusHint";
 import { I18nProvider, useI18n, useT, type LanguagePref } from "./i18n";
 import {
+  FEEDBACK_PANEL_IDENTITY,
+  FEEDBACK_PANEL_TITLE_KEY,
   JUDGER_PANEL_IDENTITY,
   JUDGER_PANEL_TITLE_KEY,
   panelIdentity,
@@ -98,7 +100,6 @@ function AppInner() {
 
   const [splashOpen, setSplashOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [hubConnected, setHubConnected] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<PendingRemoteOpen | null>(null);
@@ -260,6 +261,26 @@ function AppInner() {
       return [...prev, desc];
     });
     setActivePanelId(JUDGER_PANEL_IDENTITY);
+  }, [t]);
+
+  const openFeedbackPanel = useCallback(() => {
+    setPanels((prev) => {
+      if (prev.some((p) => p.identity === FEEDBACK_PANEL_IDENTITY)) {
+        // Already open — just focus it.
+        return prev;
+      }
+      const desc: PanelDescriptor = {
+        id: FEEDBACK_PANEL_IDENTITY,
+        identity: FEEDBACK_PANEL_IDENTITY,
+        kind: "feedback",
+        title: t(FEEDBACK_PANEL_TITLE_KEY),
+        subtitle: null,
+        icon: "✉",
+        backend: null,
+      };
+      return [...prev, desc];
+    });
+    setActivePanelId(FEEDBACK_PANEL_IDENTITY);
   }, [t]);
 
   const addToJudgerQueue = useCallback((ref: SessionRef) => {
@@ -532,6 +553,11 @@ function AppInner() {
             hint: t("menu.judger_hint"),
             onClick: () => openJudgerPanel(),
           },
+          {
+            label: t("menu.feedback"),
+            hint: t("menu.feedback_hint"),
+            onClick: () => openFeedbackPanel(),
+          },
           { separator: true, label: "" },
           {
             label: t("menu.settings"),
@@ -605,7 +631,7 @@ function AppInner() {
         ],
       },
     ],
-    [t, settings, hasActivePanel, hasLoadedSession, exporting, openJudgerPanel, callActiveHandle, activeSnapshot?.expandAll],
+    [t, settings, hasActivePanel, hasLoadedSession, exporting, openJudgerPanel, openFeedbackPanel, callActiveHandle, activeSnapshot?.expandAll],
   );
 
   // ---- Status bar source ---------------------------------------------------
@@ -664,6 +690,17 @@ function AppInner() {
               </div>
             );
           }
+          if (p.kind === "feedback") {
+            return (
+              <div
+                key={p.id}
+                className="panel-host feedback-panel-host"
+                style={{ display: visible ? "flex" : "none", flex: 1, minWidth: 0, minHeight: 0 }}
+              >
+                <FeedbackPanel visible={visible} hubConnected={hubConnected} />
+              </div>
+            );
+          }
           if (!p.backend) return null;
           return (
             <SessionPanel
@@ -688,7 +725,7 @@ function AppInner() {
                 openJudgerPanel();
               }}
               onSessionsLoaded={handleSessionsLoaded}
-              onFeedback={() => setFeedbackOpen(true)}
+              onFeedback={() => openFeedbackPanel()}
             />
           );
         })}
@@ -726,14 +763,6 @@ function AppInner() {
         onRemotesChanged={refreshRemotes}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      <FeedbackDialog
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-        // The dialog closes itself after submit; the receipt id isn't routed
-        // anywhere user-facing here because status is now per-panel and
-        // feedback is a global concern.
-        onSubmitted={() => undefined}
-      />
       <RemoteProgressDialog
         open={pendingRemote !== null}
         taskId={pendingRemote?.taskId ?? null}

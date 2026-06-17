@@ -1,6 +1,6 @@
 [package]
 name = "aaa"
-version = "1.10.11"
+version = "1.11.0"
 edition = "2021"
 description = "AI Agent Analyzer — Tauri backend"
 

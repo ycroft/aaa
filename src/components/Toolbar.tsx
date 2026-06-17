@@ -180,7 +180,6 @@ export function Toolbar({
       <button
         className="tbtn"
         onClick={onFeedback}
-        disabled={!hubConnected}
         data-hint={hubConnected ? t("toolbar.feedback_hint_connected") : t("toolbar.feedback_hint_offline")}
       >
         {t("toolbar.feedback")}

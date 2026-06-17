@@ -1,6 +1,6 @@
 [package]
 name = "aaa-core"
-version = "1.10.11"
+version = "1.11.0"
 edition = "2021"
 description = "Pure-Rust core: session model + provider implementations. No GUI/tauri deps."
 

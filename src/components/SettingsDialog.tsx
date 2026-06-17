@@ -8,7 +8,6 @@ import type {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../api";
 import { RemoteEditor } from "./RemoteEditor";
-import { FeedbackList } from "./FeedbackList";
 import { useT, type TKey } from "../i18n";
 import { providerLabel } from "../format";
 
@@ -21,14 +20,13 @@ interface Props {
   onRemotesChanged?: () => void;
 }
 
-type Tab = "backends" | "remotes" | "display" | "hub" | "feedback";
+type Tab = "backends" | "remotes" | "display" | "hub";
 
 const TAB_KEYS: Record<Tab, TKey> = {
   backends: "settings.tab.backends",
   remotes: "settings.tab.remotes",
   display: "settings.tab.display",
   hub: "settings.tab.hub",
-  feedback: "settings.tab.feedback",
 };
 
 export function SettingsDialog({
@@ -94,7 +92,7 @@ export function SettingsDialog({
           <button className="close" onClick={onClose} data-hint={t("settings.close_hint")}>×</button>
         </div>
         <div style={{ display: "flex", gap: 4, padding: "8px 16px 0", borderBottom: "1px solid var(--border)" }}>
-          {(["backends", "remotes", "display", "hub", "feedback"] as Tab[]).map((tk) => (
+          {(["backends", "remotes", "display", "hub"] as Tab[]).map((tk) => (
             <button
               key={tk}
               className={"btn" + (tab === tk ? " primary" : "")}
@@ -235,13 +233,6 @@ export function SettingsDialog({
               />
               <div className="help">{t("settings.hub.device_id_help")}</div>
             </div>
-          </div>
-        )}
-
-        {tab === "feedback" && (
-          <div className="modal-body">
-            <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-2)" }}>{t("settings.feedback_tab.heading")}</h3>
-            <FeedbackList />
           </div>
         )}
 
