@@ -69,7 +69,7 @@ pub fn get_app_info() -> AppInfo {
         name: "AAA · Agent Analyzer",
         version: env!("CARGO_PKG_VERSION"),
         author: "Yin Yuhao",
-        description: "跨后端的本地 AI 编码代理会话日志分析工具。读取磁盘上各家 agent（Claude Code、opencode、…）的原生日志，统一成共享数据模型，在桌面 UI 里呈现：会话列表、可折叠时间线、token 成本与上下文窗口走势，标红峰值节点和上下文跳跃点，方便定位『窗口炸在哪条消息』。",
+        description: "跨后端的本地 AI 编码代理会话日志分析工具。读取磁盘上各家 agent（Claude Code、Code Agent 3.x、opencode、…）的原生日志，统一成共享数据模型，在桌面 UI 里呈现：可折叠时间线、token 成本与上下文窗口走势、tokens-per-second 曲线、子代理时间线、skill 调用聚合，标红峰值节点和上下文跳跃点，方便定位『窗口炸在哪条消息』。还能通过 SSH 把远程主机上的会话增量同步回本地、对会话按 rubric 批量打分（评估器），并直接从 UI 起一个新 agent 接着干活。",
         release_notes: RELEASE_NOTES,
     }
 }
