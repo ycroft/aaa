@@ -92,6 +92,14 @@ const FOOTER_SCHEMA: &str = r#"
 每个 finding 必须引用至少一个 evidence_node_id（除非确实无法定位具体节点，
 此时 evidence_node_ids 留空数组）。node_id 来源于 sessions/<session_id>/events.jsonl
 的每行 "id" 字段。
+
+写入 result.json 后，**必须用 Bash 调用 Python 验证 JSON 合法性**（用上方"结果写入"给出的完整路径替换 `<result_path>`）：
+
+```bash
+python3 -c "import json; json.load(open('<result_path>'))" && echo "JSON valid"
+```
+
+若验证失败，修正 JSON 并重新写入，再次验证，直到通过为止。
 "#;
 
 #[cfg(test)]
