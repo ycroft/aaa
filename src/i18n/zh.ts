@@ -340,7 +340,7 @@ export const zh = {
       context: "上下文管理",
       tools: "工具使用效率",
       alignment: "任务对齐 + Skill",
-      safety: "安全 / 险动作",
+      safety: "安全 / 危险动作",
       unknown: "未知维度",
     },
     severity: {
