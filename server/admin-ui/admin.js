@@ -29,7 +29,11 @@ async function loadFeedback() {
     return;
   }
   if (!res.ok) {
-    renderPlaceholder('请求失败: ' + res.status + (res.status === 401 ? ' (token 错误?)' : ''), colspan);
+    let hint = '';
+    if (res.status === 401) {
+      hint = ' — admin_token 不对；dev 环境见 scripts/server/dev.sh，生产见 config.toml 的 [server].admin_token';
+    }
+    renderPlaceholder('请求失败: ' + res.status + hint, colspan);
     return;
   }
   const j = await res.json();
@@ -93,4 +97,9 @@ $('rel-form').addEventListener('submit', async (e) => {
   $('rel-out').textContent = res.ok ? 'OK · ' + (await res.text()) : 'FAIL ' + res.status;
 });
 
-loadFeedback();
+// 首次进页面不自动 fetch，避免没填/填错 token 时直接吃 401。
+if (tokenInput.value) {
+  renderPlaceholder('已加载保存的 token，点 Reload 重新拉取', 7);
+} else {
+  renderPlaceholder('请输入 admin token 后点 Reload', 7);
+}
