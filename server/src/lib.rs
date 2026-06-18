@@ -36,10 +36,7 @@ pub fn build_router_with(state: AppState) -> Router {
         .merge(limited_feedback_create)
         .merge(limited_manifest)
         .merge(routes::admin::router())
+        .merge(routes::admin_static::router())
         .nest_service("/v1/updates/artifacts", ServeDir::new(artifacts))
-        .nest_service(
-            "/admin",
-            ServeDir::new("server/admin-ui").append_index_html_on_directories(true),
-        )
         .with_state(state)
 }

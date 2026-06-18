@@ -1,13 +1,14 @@
 const $ = (id) => document.getElementById(id);
 const tokenInput = $('token');
 tokenInput.value = localStorage.token || '';
-tokenInput.addEventListener('change', () => { localStorage.token = tokenInput.value; });
+tokenInput.addEventListener('change', () => { localStorage.token = tokenInput.value; loadFeedback(); });
 
 function authHeaders() {
   return { 'Authorization': 'Bearer ' + (localStorage.token || '') };
 }
 
 async function loadFeedback() {
+  if (!tokenInput.value) { return; }
   const status = $('filter').value;
   const url = status ? '/admin/api/feedback?status=' + encodeURIComponent(status) : '/admin/api/feedback';
   const res = await fetch(url, { headers: authHeaders() });
