@@ -7,15 +7,38 @@ function authHeaders() {
   return { 'Authorization': 'Bearer ' + (localStorage.token || '') };
 }
 
+function renderPlaceholder(msg, colspan) {
+  const tbody = $('fb-table').querySelector('tbody');
+  tbody.innerHTML = `<tr><td colspan="${colspan}" style="color:#888;padding:16px;text-align:center">${escapeHtml(msg)}</td></tr>`;
+}
+
 async function loadFeedback() {
-  if (!tokenInput.value) { return; }
+  const colspan = 7;
+  if (!tokenInput.value) {
+    renderPlaceholder('请在右上角输入 admin token 后点 Reload', colspan);
+    return;
+  }
+  renderPlaceholder('加载中…', colspan);
   const status = $('filter').value;
   const url = status ? '/admin/api/feedback?status=' + encodeURIComponent(status) : '/admin/api/feedback';
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) { alert('请求失败: ' + res.status); return; }
+  let res;
+  try {
+    res = await fetch(url, { headers: authHeaders() });
+  } catch (e) {
+    renderPlaceholder('请求失败: ' + e, colspan);
+    return;
+  }
+  if (!res.ok) {
+    renderPlaceholder('请求失败: ' + res.status + (res.status === 401 ? ' (token 错误?)' : ''), colspan);
+    return;
+  }
   const j = await res.json();
   const tbody = $('fb-table').querySelector('tbody');
   tbody.innerHTML = '';
+  if (!j.items || j.items.length === 0) {
+    renderPlaceholder('暂无反馈', colspan);
+    return;
+  }
   for (const it of j.items) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${new Date(it.created_at).toLocaleString()}</td>
