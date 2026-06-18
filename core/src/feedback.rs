@@ -55,6 +55,24 @@ pub fn append(ticket: LocalTicket) -> Result<()> {
     save(&t)
 }
 
+/// Remove the local copy of a ticket after the user successfully withdraws it
+/// on the hub. Idempotent: if no such id is recorded locally, returns Ok(())
+/// without touching the file. The 404-from-server branch in the Tauri
+/// command relies on this so a server-side delete that we missed locally
+/// still ends in a clean state.
+pub fn remove(id: &str) -> Result<()> {
+    let mut t = match load() {
+        Ok(v) => v,
+        Err(_) => return Ok(()),
+    };
+    let before = t.items.len();
+    t.items.retain(|i| i.id != id);
+    if t.items.len() == before {
+        return Ok(());
+    }
+    save(&t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

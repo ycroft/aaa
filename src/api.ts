@@ -82,5 +82,7 @@ export const api = {
   getFeedbackStatus: (id: string, token: string) =>
     invoke<RemoteTicketView | null>("get_feedback_status", { id, token }),
   listLocalTickets: () => invoke<LocalTickets>("list_local_tickets"),
+  withdrawFeedback: (id: string, token: string) =>
+    invoke<boolean>("withdraw_feedback", { id, token }),
   refreshHub: () => invoke<void>("refresh_hub"),
 };

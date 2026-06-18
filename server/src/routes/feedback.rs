@@ -20,7 +20,7 @@ use ulid::Ulid;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/v1/feedback", post(create_handler))
-        .route("/v1/feedback/:id", get(get_one))
+        .route("/v1/feedback/:id", get(get_one).delete(withdraw))
         .route("/v1/feedback/:id/attach", post(attach))
 }
 
@@ -28,7 +28,7 @@ pub fn router() -> Router<AppState> {
 /// that route under a per-route limiter middleware in `lib.rs`).
 pub fn unlimited_router() -> Router<AppState> {
     Router::new()
-        .route("/v1/feedback/:id", get(get_one))
+        .route("/v1/feedback/:id", get(get_one).delete(withdraw))
         .route("/v1/feedback/:id/attach", post(attach))
 }
 
@@ -147,6 +147,48 @@ async fn get_one(
         attachments,
     };
     Ok(Json(view))
+}
+
+async fn withdraw(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+    Query(q): Query<ClaimQuery>,
+) -> Result<StatusCode, AppError> {
+    // Auth check before doing anything destructive — must be the holder of
+    // the claim_token issued at creation time.
+    let row = sqlx::query("SELECT claim_token FROM feedback WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&s.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let stored: String = row.get("claim_token");
+    if !ct_eq(stored.as_bytes(), q.token.as_bytes()) {
+        return Err(AppError::Unauthorized);
+    }
+
+    // Wipe attachment files on disk first. ON DELETE CASCADE on the
+    // feedback_attachment FK takes care of the DB rows below, but the
+    // physical files under {uploads.dir}/{ticket_id}/ are not touched by
+    // SQLite — we have to clean them up explicitly. Best-effort: log and
+    // press on if the directory is already gone.
+    let dir = s.cfg.uploads.dir.join(&id);
+    if let Err(e) = tokio::fs::remove_dir_all(&dir).await {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::warn!(ticket = %id, error = %e, "remove attachment dir failed");
+        }
+    }
+
+    let res = sqlx::query("DELETE FROM feedback WHERE id = ?")
+        .bind(&id)
+        .execute(&s.db)
+        .await?;
+    if res.rows_affected() == 0 {
+        // Raced with another deletion; surface NotFound so client can treat
+        // it the same way as "already gone".
+        return Err(AppError::NotFound);
+    }
+    tracing::info!(ticket = %id, "feedback withdrawn by submitter");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn attach(

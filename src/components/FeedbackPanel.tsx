@@ -50,6 +50,9 @@ export function FeedbackPanel({ visible, hubConnected }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Tracks per-row in-flight withdrawals so the button can show a busy
+  // label and we can refuse to fire the same delete twice.
+  const [withdrawing, setWithdrawing] = useState<Set<string>>(new Set());
   const aliveRef = useRef(true);
   useEffect(() => {
     aliveRef.current = true;
@@ -193,6 +196,52 @@ export function FeedbackPanel({ visible, hubConnected }: Props) {
       setSubmitErr(t("feedback_panel.form.delivery_failed"));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // ---- Withdraw handler --------------------------------------------------
+  // The user-driven "delete this ticket on the server" path. We confirm
+  // with a tougher message once the maintainer has moved the ticket out of
+  // `new` (decision A from the design discussion: allow at any status, but
+  // surface the implication so it's an informed choice). On success we
+  // remove the row optimistically — the Tauri command has already cleared
+  // the local tickets.json, so a subsequent refresh would do the same.
+  const handleWithdraw = async (row: Row) => {
+    if (!hubConnected) return;
+    if (withdrawing.has(row.local.id)) return;
+    const remoteStatus = row.remote?.status;
+    const started =
+      typeof remoteStatus === "string" && remoteStatus !== "" && remoteStatus !== "new";
+    const message = started
+      ? t("feedback_panel.list.withdraw_confirm_started", {
+          status: remoteStatus ?? "",
+        })
+      : t("feedback_panel.list.withdraw_confirm");
+    if (!window.confirm(message)) return;
+    setWithdrawing((s) => {
+      const n = new Set(s);
+      n.add(row.local.id);
+      return n;
+    });
+    try {
+      const ok = await api.withdrawFeedback(row.local.id, row.local.claim_token);
+      if (!ok) {
+        window.alert(t("feedback_panel.list.withdraw_failed"));
+        return;
+      }
+      if (!aliveRef.current) return;
+      setRows((rs) => rs.filter((r) => r.local.id !== row.local.id));
+    } catch (e) {
+      console.info("withdraw_feedback failed", e);
+      window.alert(t("feedback_panel.list.withdraw_failed"));
+    } finally {
+      if (aliveRef.current) {
+        setWithdrawing((s) => {
+          const n = new Set(s);
+          n.delete(row.local.id);
+          return n;
+        });
+      }
     }
   };
 
@@ -363,10 +412,13 @@ export function FeedbackPanel({ visible, hubConnected }: Props) {
                   <th>{t("feedback_panel.list.col_title")}</th>
                   <th>{t("feedback_panel.list.col_status")}</th>
                   <th>{t("feedback_panel.list.col_note")}</th>
+                  <th>{t("feedback_panel.list.col_actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {rows.map((r) => {
+                  const busy = withdrawing.has(r.local.id);
+                  return (
                   <tr key={r.local.id}>
                     <td>{new Date(r.local.created_at).toLocaleString()}</td>
                     <td>{r.local.category}</td>
@@ -377,8 +429,25 @@ export function FeedbackPanel({ visible, hubConnected }: Props) {
                     <td title={r.remote?.admin_note ?? ""}>
                       {r.remote?.admin_note ?? ""}
                     </td>
+                    <td>
+                      <button
+                        className="btn feedback-withdraw-btn"
+                        disabled={!hubConnected || busy}
+                        title={
+                          hubConnected
+                            ? t("feedback_panel.list.withdraw_hint")
+                            : t("feedback_panel.list.withdraw_offline_hint")
+                        }
+                        onClick={() => void handleWithdraw(r)}
+                      >
+                        {busy
+                          ? t("feedback_panel.list.withdrawing")
+                          : t("feedback_panel.list.withdraw")}
+                      </button>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

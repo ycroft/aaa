@@ -3663,3 +3663,12 @@ mark.search-hit {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.feedback-withdraw-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.feedback-withdraw-btn:not(:disabled):hover {
+  border-color: var(--text-err, #a33);
+  color: var(--text-err, #a33);
+}

@@ -132,6 +132,29 @@ pub fn list_local_tickets() -> Result<LocalTickets, String> {
     aaa_core::feedback::load().map_err(|e| e.to_string())
 }
 
+/// Ask the hub to delete a ticket the user submitted from this machine,
+/// then drop it from the local `tickets.json`. Returns true on a clean
+/// success (server responded 2xx or 404 — both end in "server doesn't have
+/// this anymore"). Any other failure returns false and leaves both sides
+/// untouched, so the user can retry once the hub is reachable.
+#[tauri::command]
+pub async fn withdraw_feedback(
+    hub: State<'_, Mutex<HubClient>>,
+    id: String,
+    token: String,
+) -> Result<bool, String> {
+    let client = { hub.lock().unwrap().clone() };
+    let ok = client.withdraw(&id, &token).await;
+    if ok {
+        if let Err(e) = aaa_core::feedback::remove(&id) {
+            warn!("remove local ticket failed: {}", e);
+        }
+    } else {
+        info!("withdraw_feedback: hub refused or unreachable (silent)");
+    }
+    Ok(ok)
+}
+
 #[tauri::command]
 pub async fn check_update(_app: AppHandle) -> Result<Option<String>, String> {
     // Hook into tauri-plugin-updater's UpdaterExt at the JS layer instead

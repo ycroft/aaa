@@ -60,6 +60,7 @@ pub fn run() {
             hub_commands::submit_feedback,
             hub_commands::get_feedback_status,
             hub_commands::list_local_tickets,
+            hub_commands::withdraw_feedback,
             hub_commands::check_update,
             hub_commands::refresh_hub,
             judger_commands::judger_start,

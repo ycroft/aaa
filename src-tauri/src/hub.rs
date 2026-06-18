@@ -133,6 +133,34 @@ impl HubClient {
         Some(created)
     }
 
+    /// Withdraw (delete) a ticket the user originally submitted from this
+    /// machine. Authenticates with the same `claim_token` flow as
+    /// `get_status`. Returns true on success; both 2xx and 404 count as
+    /// success — 404 means the server has already forgotten about this
+    /// ticket, which is the same end-state we're after. All other failures
+    /// (transport, 401, 5xx) return false and are logged at info / warn.
+    pub async fn withdraw(&self, id: &str, token: &str) -> bool {
+        if !self.is_configured() {
+            return false;
+        }
+        match self
+            .http
+            .delete(format!("{}/v1/feedback/{}?token={}", self.base, id, token))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() || r.status().as_u16() == 404 => true,
+            Ok(r) => {
+                log::warn!("withdraw non-success: {}", r.status());
+                false
+            }
+            Err(e) => {
+                log::warn!("withdraw transport: {}", e);
+                false
+            }
+        }
+    }
+
     pub async fn get_status(&self, id: &str, token: &str) -> Option<RemoteTicketView> {
         if !self.is_configured() {
             return None;

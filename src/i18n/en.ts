@@ -301,7 +301,17 @@ export const en: Catalog = {
       col_title: "Title",
       col_status: "Status",
       col_note: "Note",
+      col_actions: "Actions",
       status_unknown: "unknown",
+      withdraw: "✕ Withdraw",
+      withdrawing: "Withdrawing…",
+      withdraw_hint: "Ask the server to delete this ticket",
+      withdraw_offline_hint: "Hub offline — cannot withdraw",
+      withdraw_confirm:
+        "Withdraw this feedback? The server will delete the record and its attachments. This cannot be undone.",
+      withdraw_confirm_started:
+        "The maintainer has already started working on this feedback (status: {status}). Withdrawing now will delete the record on the server. Continue?",
+      withdraw_failed: "Withdraw failed, please try again later.",
     },
   },
   judger: {

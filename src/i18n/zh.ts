@@ -299,7 +299,16 @@ export const zh = {
       col_title: "标题",
       col_status: "状态",
       col_note: "备注",
+      col_actions: "操作",
       status_unknown: "未知",
+      withdraw: "✕ 撤销",
+      withdrawing: "撤销中…",
+      withdraw_hint: "请求服务端删除这条反馈",
+      withdraw_offline_hint: "Hub 未连接，无法撤销",
+      withdraw_confirm: "撤销这条反馈？服务端将删除该记录及其附件，且不可恢复。",
+      withdraw_confirm_started:
+        "维护者已经开始处理这条反馈（状态：{status}）。继续撤销将让服务端删除记录，确定吗？",
+      withdraw_failed: "撤销失败，请稍后重试。",
     },
   },
   judger: {
