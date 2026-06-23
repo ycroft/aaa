@@ -29,12 +29,18 @@ aaa/
 │       └── version.rs    # SCHEMA_VERSION 常量 + default 助手
 ├── server/            # aaa-hub 服务端（cargo workspace 成员，Axum + SQLite）
 │   ├── src/
-│   │   ├── routes/          # health / feedback / updates(manifest+artifacts) / admin
+│   │   ├── routes/          # health / feedback / updates(manifest+artifacts) / web_api / web_static
+│   │   ├── auth_web.rs      # 伪 SSO 提取器（RequireAuth/RequireAdmin，预留真实 SSO TODO）
 │   │   ├── domain/          # update 领域模型（feedback 领域逻辑直接落在 routes/feedback.rs）
 │   │   └── notify/          # email 通知（lettre SMTP）
-│   ├── admin-ui/            # 管理后台静态页（index.html + admin.js）
-│   ├── migrations/          # SQLite 迁移脚本
-│   └── tests/               # 11 份集成测试文件
+│   ├── web/                 # Web 前端（React 18 + TypeScript 5 + Vite 8）
+│   │   └── src/
+│   │       ├── components/SessionViewer/  # 从桌面端移植，无 Tauri 依赖
+│   │       ├── pages/       # Landing / Download / Login / Dashboard / Analysis / Admin/*
+│   │       ├── types.ts     # 与 core/model.rs 对齐（同桌面端 src/types.ts）
+│   │       └── api.ts       # fetch 封装（代理到后端 /api/*）
+│   ├── migrations/          # SQLite 迁移脚本（0001_init: feedback；0002_web: web_sessions）
+│   └── tests/               # 集成测试
 ├── src-tauri/         # Tauri host
 │   └── src/
 │       ├── commands.rs      # 核心命令 + 远程同步 + 导出 + AI agent 启动
@@ -197,14 +203,28 @@ UI 的"峰值标红 + 跳跃标橙"靠的是 `cumulative_context_tokens` 这个�
 
 ### aaa-hub 服务端（`server/`）
 
-独立部署的 Axum Web 服务，为桌面客户端提供反馈提交、更新检查等功能：
+独立部署的 Axum Web 服务，兼顾桌面客户端 API 和完整的产品网站（BS/CS 混合架构）：
 
-- **路由**：`/v1/feedback`（创建/查询）、`/v1/updates/manifest`（版本清单）、`/v1/updates/artifacts`（静态文件）、`/admin`（管理后台）、`/healthz`
-- **存储**：SQLite（sqlx + migrations）
+- **路由**：
+  - `/v1/*` — 桌面客户端 API（feedback 创建/查询/撤销、updates manifest/artifacts）
+  - `/api/*` — Web 前端 API（auth/me、sessions CRUD、releases、release-notes；admin 子路由需 SSO admin 身份）
+  - `/healthz` — 健康检查
+  - `/*` — React SPA（rust-embed 编译期内嵌 `server/web/dist/`，未命中的路径回退 index.html）
+- **Web 前端功能**：产品宣传首页、下载页（版本列表 + release notes）、会话日志分析（SessionViewer 移植自桌面端）、Dashboard（占位）、后台管理（反馈 + 版本发布）
+- **鉴权**：读取 SSO cookie（`config.server.sso_cookie_name`，默认 `aaa_user`）；当前为伪实现，cookie 值直接作为 user_id；`config.server.admin_users` 配置 admin 工号列表（后端强制，不下发前端）
+- **存储**：SQLite（sqlx + migrations）— `0001_init`（feedback/attachment）、`0002_web`（web_auth_sessions/web_sessions）
 - **通知**：SMTP 邮件（lettre）
 - **限流**：governor（feedback 创建、manifest 查询）
-- **认证**：admin token
 - 遵循 fail-silent 规则：客户端侧所有 hub 错误都静默处理，不弹给用户
+
+**Web 前端构建：**`server/web/dist/` 必须在 `cargo build` 前构建好（rust-embed 编译期读取）。
+```bash
+cd server/web && npm install && npm run build   # 先构建前端
+cargo build -p aaa-hub                          # 再编译后端（embed dist/）
+```
+开发时用 Vite HMR（`npm run dev`，代理 `/api/` `/v1/` 到后端端口）+ `scripts/server/dev.sh` 独立跑后端。
+
+**SSO 接入点**：`server/src/auth_web.rs` 的 `fake_extract_user()` 函数，TODO 注释处替换为真实 SSO 验证逻辑。
 
 ## 当前 Backend
 
@@ -447,3 +467,5 @@ gh release create v<ver> \
 | `scripts/build-release.ps1` / `.cmd` | Windows release 构建（含 MSI / NSIS） |
 | `scripts/install-windows.ps1` / `.cmd` | Windows 本机安装到 `%LOCALAPPDATA%\Programs\AAA` |
 | `scripts/package-portable.ps1` / `.cmd` | Windows portable zip（含自包含 install.ps1/install.cmd） |
+| `scripts/server/dev.sh` | 服务端本地开发（自动生成 dev config，启动 aaa-hub，默认 :8787） |
+| `scripts/server/build-release.sh` | 服务端 release 构建（需先 `cd server/web && npm run build`） |

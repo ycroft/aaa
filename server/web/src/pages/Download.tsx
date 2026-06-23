@@ -6,12 +6,14 @@ export default function Download() {
   const [items, setItems] = useState<ReleaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     listReleases()
       .then(r => setItems(r.items))
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+    fetch('/api/release-notes').then(r => r.text()).then(setNotes).catch(() => {});
   }, []);
 
   return (
@@ -53,9 +55,21 @@ export default function Download() {
         )}
       </div>
 
-      <div className="alert-info" style={{ fontSize: 13 }}>
-        完整版本说明请前往 <a href="https://github.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>GitHub Releases</a> 页面查看。
-      </div>
+      {notes && (
+        <div className="card">
+          <div className="card-title">Release Notes</div>
+          <pre style={{
+            margin: 0,
+            fontFamily: 'var(--font-sans)',
+            fontSize: 13,
+            color: 'var(--text-2)',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.7,
+            userSelect: 'text',
+            cursor: 'text',
+          }}>{notes}</pre>
+        </div>
+      )}
     </div>
   );
 }

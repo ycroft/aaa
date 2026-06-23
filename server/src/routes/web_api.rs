@@ -31,8 +31,9 @@ pub fn router() -> Router<AppState> {
         //   5. Return the list of imported session IDs.
         // Until the internal data source schema is finalized, this returns 501.
         .route("/api/sessions/import", post(import_stub))
-        // Public: version list for download page
+        // Public: version list and release notes for download page
         .route("/api/releases", get(list_releases))
+        .route("/api/release-notes", get(release_notes))
         // Admin-only endpoints (same logic as routes/admin.rs, web-auth gated)
         .route("/api/admin/feedback", get(admin_list_feedback))
         .route("/api/admin/feedback/:id", patch(admin_update_feedback))
@@ -152,6 +153,15 @@ async fn list_releases(State(s): State<AppState>) -> Result<Json<Value>, AppErro
         })
         .collect();
     Ok(Json(json!({ "items": items })))
+}
+
+const RELEASE_NOTES: &str = include_str!("../../../release-notes.txt");
+
+async fn release_notes() -> impl axum::response::IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        RELEASE_NOTES,
+    )
 }
 
 // --- Admin endpoints (web-auth based, mirrors routes/admin.rs logic) ---
