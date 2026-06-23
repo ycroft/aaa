@@ -5,7 +5,7 @@ import App from './App'
 import './styles/app.css'
 
 const stored = localStorage.getItem('aaa_theme');
-document.documentElement.dataset.theme = (stored === 'light' || stored === 'dark') ? stored : 'dark';
+document.documentElement.dataset.theme = (stored === 'light' || stored === 'dark') ? stored : 'light';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
