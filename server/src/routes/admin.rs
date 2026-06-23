@@ -12,10 +12,10 @@ use sqlx::Row;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/api/feedback", get(list))
-        .route("/admin/api/feedback/:id", patch(update_one))
-        .route("/admin/api/feedback/:id/attachment/:aid", get(download))
-        .route("/admin/api/releases", post(publish))
+        .route("/api/admin/feedback", get(list))
+        .route("/api/admin/feedback/:id", patch(update_one))
+        .route("/api/admin/feedback/:id/attachment/:aid", get(download))
+        .route("/api/admin/releases", post(publish))
 }
 
 #[derive(Deserialize)]
@@ -138,6 +138,13 @@ async fn download(
 async fn publish(
     _a: AdminAuth,
     State(s): State<AppState>,
+    mp: Multipart,
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
+    publish_inner(s, mp).await
+}
+
+pub(crate) async fn publish_inner(
+    s: AppState,
     mut mp: Multipart,
 ) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let mut version: Option<String> = None;

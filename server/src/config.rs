@@ -17,6 +17,19 @@ pub struct Server {
     pub public_url: String,
     pub data_dir: PathBuf,
     pub admin_token: String,
+    /// Name of the SSO cookie set by the company identity service.
+    /// TODO(real-sso): Replace fake extraction in auth_web.rs with a real
+    /// verification call to the company SSO endpoint using this cookie value.
+    #[serde(default = "default_sso_cookie")]
+    pub sso_cookie_name: String,
+    /// Employee IDs (工号) that receive admin privileges on the web UI.
+    /// Enforced server-side only; never sent to the frontend.
+    #[serde(default)]
+    pub admin_users: Vec<String>,
+}
+
+fn default_sso_cookie() -> String {
+    "aaa_user".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]

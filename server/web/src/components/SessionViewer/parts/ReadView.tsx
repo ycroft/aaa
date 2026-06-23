@@ -1,0 +1,59 @@
+import { useMemo } from "react";
+import type { ReadCall } from "./rich-tools";
+import { Highlight } from "./Highlight";
+
+const NUMBERED_LINE_RE = /^\s*(\d+)\t(.*)$/;
+
+interface NumberedRow {
+  no: number | null;
+  text: string;
+}
+
+function parseNumbered(output: string): NumberedRow[] {
+  return output.split("\n").map((line) => {
+    const m = line.match(NUMBERED_LINE_RE);
+    if (m) return { no: Number(m[1]), text: m[2] };
+    return { no: null, text: line };
+  });
+}
+
+export function ReadView({ data }: { data: ReadCall }) {
+  const range =
+    data.offset != null || data.limit != null
+      ? `行 ${data.offset ?? 1}–${data.limit != null ? (data.offset ?? 1) + data.limit - 1 : "…"}`
+      : null;
+
+  const rows = useMemo(
+    () => (data.output ? parseNumbered(data.output) : []),
+    [data.output],
+  );
+  const hasNumbered = rows.some((r) => r.no != null);
+
+  return (
+    <div className="rich-view read-view">
+      <div className="rich-header">
+        <span className="rich-variant">Read</span>
+        <span className="rich-path mono" title={data.filePath}>
+          <Highlight text={data.filePath} />
+        </span>
+        {range && <span className="rich-tag">{range}</span>}
+      </div>
+      {data.output ? (
+        hasNumbered ? (
+          <pre className="rich-pre read-numbered">
+            {rows.map((r, i) => (
+              <div key={i} className="read-row">
+                <span className="read-gutter">{r.no ?? ""}</span>
+                <span className="read-line">{r.text ? <Highlight text={r.text} /> : " "}</span>
+              </div>
+            ))}
+          </pre>
+        ) : (
+          <pre className="rich-pre"><Highlight text={data.output} /></pre>
+        )
+      ) : (
+        <div className="rich-empty">输出在 tool_result 里</div>
+      )}
+    </div>
+  );
+}
